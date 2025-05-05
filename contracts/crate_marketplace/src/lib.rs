@@ -26,6 +26,14 @@ pub struct SampleData {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub enum LicenseTier {
+    Lease,
+    Premium,
+    Exclusive,
+}
+
+#[contracttype]
 pub enum DataKey {
     Sample(u32),
     Earnings(Address),
