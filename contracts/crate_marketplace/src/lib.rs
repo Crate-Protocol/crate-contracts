@@ -150,6 +150,11 @@ impl CrateMarketplace {
         log!(&env, "Withdrawn: {} stroops to {}", earnings, producer);
     }
 
+    pub fn get_license(env: Env, buyer: Address, sample_id: u32) -> Option<LicenseTier> {
+        env.storage().persistent()
+            .get(&DataKey::License(buyer, sample_id))
+    }
+
     pub fn delist_sample(env: Env, uploader: Address, sample_id: u32) {
         uploader.require_auth();
         let sample: SampleData = env.storage().persistent()
