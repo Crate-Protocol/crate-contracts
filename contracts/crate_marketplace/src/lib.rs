@@ -139,7 +139,7 @@ impl CrateMarketplace {
             .unwrap_or(0)
     }
 
-    pub fn withdraw_earnings(env: Env, producer: Address, token_address: Address) {
+    pub fn withdraw_earnings(env: Env, producer: Address, token_address: Address) -> i128 {
         producer.require_auth();
         let key      = DataKey::Earnings(producer.clone());
         let earnings: i128 = env.storage().persistent().get(&key).unwrap_or(0);
@@ -148,6 +148,7 @@ impl CrateMarketplace {
         let token = token::Client::new(&env, &token_address);
         token.transfer(&env.current_contract_address(), &producer, &earnings);
         log!(&env, "Withdrawn: {} stroops to {}", earnings, producer);
+        earnings
     }
 
     pub fn get_license(env: Env, buyer: Address, sample_id: u32) -> Option<LicenseTier> {
