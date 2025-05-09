@@ -70,6 +70,8 @@ impl CrateMarketplace {
         bpm:             u32,
     ) -> u32 {
         uploader.require_auth();
+        assert!(title.len() > 0, "Title cannot be empty");
+        assert!(ipfs_cid.len() > 0, "IPFS CID cannot be empty");
         assert!(bpm >= 40 && bpm <= 300, "BPM must be 40-300");
         assert!(lease_price > 0 && premium_price > 0 && exclusive_price > 0, "All prices must be positive");
         assert!(lease_price < premium_price && premium_price < exclusive_price, "Prices must be lease < premium < exclusive");
