@@ -174,4 +174,14 @@ impl CrateMarketplace {
             storage.get(&TOTAL_VOLUME_KEY).unwrap_or(0),
         )
     }
+
+    pub fn get_platform_fee(env: Env) -> u32 {
+        env.storage().instance()
+            .get(&PLATFORM_FEE_KEY)
+            .unwrap_or(0)
+    }
+
+    pub fn bump_instance(env: Env) {
+        env.storage().instance().extend_ttl(17_280, 17_280);
+    }
 }
