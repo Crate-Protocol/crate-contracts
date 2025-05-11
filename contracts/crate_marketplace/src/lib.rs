@@ -86,6 +86,7 @@ impl CrateMarketplace {
         };
         env.storage().persistent().set(&DataKey::Sample(sample_id), &sample);
         storage.set(&TOTAL_SAMPLES_KEY, &sample_id);
+        env.events().publish((symbol_short!("uploaded"), sample_id), uploader.clone());
         sample_id
     }
 
