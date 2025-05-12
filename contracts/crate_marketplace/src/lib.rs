@@ -127,7 +127,8 @@ impl CrateMarketplace {
         let total_vol: i128 = storage.get(&TOTAL_VOLUME_KEY).unwrap_or(0);
         storage.set(&TOTAL_VOLUME_KEY, &(total_vol + price));
 
-        log!(&env, "License sold: sample={}, tier={}, price={}", sample_id, tier, price);
+        env.events().publish((symbol_short!("licensed"), sample_id), (buyer, price));
+        log!(&env, "License sold: sample={}, price={}", sample_id, price);
     }
 
     pub fn get_sample(env: Env, sample_id: u32) -> SampleData {
