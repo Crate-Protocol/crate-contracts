@@ -6,12 +6,10 @@ mod tests {
         token, Address, Env, String,
     };
 
-    // Helper: create a native XLM SAC and mint tokens to an address
     fn create_xlm_token(env: &Env, admin: &Address) -> (Address, token::Client) {
         let contract_address = env.register_stellar_asset_contract_v2(admin.clone());
         let token_client = token::Client::new(env, &contract_address.address());
         let token_admin = token::StellarAssetClient::new(env, &contract_address.address());
-        // Mint 1000 XLM (in stroops) to admin
         token_admin.mint(admin, &10_000_000_000i128);
         (contract_address.address(), token_client)
     }
