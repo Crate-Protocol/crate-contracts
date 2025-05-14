@@ -32,9 +32,9 @@ mod tests {
             &producer,
             &title,
             &cid,
-            &10i128,   // lease: 10 XLM
-            &50i128,   // premium: 50 XLM
-            &200i128,  // exclusive: 200 XLM
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
             &genre,
             &95u32,
         );
@@ -42,9 +42,9 @@ mod tests {
 
         let sample = client.get_sample(&sample_id);
         assert_eq!(sample.title, title);
-        assert_eq!(sample.lease_price, 100_000_000i128);    // 10 XLM in stroops
-        assert_eq!(sample.premium_price, 500_000_000i128);  // 50 XLM in stroops
-        assert_eq!(sample.exclusive_price, 2_000_000_000i128); // 200 XLM in stroops
+        assert_eq!(sample.lease_price, 100_000_000i128);
+        assert_eq!(sample.premium_price, 500_000_000i128);
+        assert_eq!(sample.exclusive_price, 2_000_000_000i128);
         assert_eq!(sample.bpm, 95u32);
         assert!(!sample.is_exclusive);
         assert_eq!(sample.total_sales, 0u32);
