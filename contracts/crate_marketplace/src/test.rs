@@ -117,7 +117,7 @@ mod tests {
     }
 
     #[test]
-    fn test_delist_sample() {
+    fn test_delist_sample_removes_record() {
         let env = Env::default();
         env.mock_all_auths();
 
@@ -130,17 +130,41 @@ mod tests {
             &producer,
             &String::from_str(&env, "My Beat"),
             &String::from_str(&env, "QmTestCID"),
-            &10i128,
-            &50i128,
-            &200i128,
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
             &String::from_str(&env, "R&B"),
             &80u32,
         );
 
         client.delist_sample(&producer, &sample_id);
+        assert_eq!(client.get_earnings(&producer), 0i128);
+    }
 
-        let sample = client.get_sample(&sample_id);
-        assert!(sample.is_exclusive); // reused as "unavailable" flag
+    #[test]
+    #[should_panic(expected = "Sample not found")]
+    fn test_get_sample_after_delist_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+
+        let producer = Address::generate(&env);
+        let sample_id = client.upload_sample(
+            &producer,
+            &String::from_str(&env, "My Beat"),
+            &String::from_str(&env, "QmTestCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "R&B"),
+            &80u32,
+        );
+
+        client.delist_sample(&producer, &sample_id);
+        client.get_sample(&sample_id);
     }
 
     #[test]
