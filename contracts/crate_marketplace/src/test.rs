@@ -185,28 +185,24 @@ mod tests {
             &producer,
             &String::from_str(&env, "Lease Me"),
             &String::from_str(&env, "QmLeaseCID"),
-            &10i128,   // lease 10 XLM
-            &50i128,
-            &200i128,
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
             &String::from_str(&env, "Trap"),
             &140u32,
         );
 
-        // Buyer purchases Lease tier (tier=0)
-        client.purchase_license(&buyer, &sample_id, &0u32);
+        client.purchase_license(&buyer, &sample_id, &xlm_addr, &LicenseTier::Lease);
 
-        // Producer should have 90% of 10 XLM = 9 XLM = 90_000_000 stroops
         let earnings = client.get_earnings(&producer);
         assert_eq!(earnings, 90_000_000i128);
 
-        // Platform address should have 10% = 1 XLM = 10_000_000 stroops
         let platform_balance = xlm_client.balance(&platform);
         assert_eq!(platform_balance, 10_000_000i128);
 
-        // Sample stats updated
         let sample = client.get_sample(&sample_id);
         assert_eq!(sample.total_sales, 1u32);
-        assert!(!sample.is_exclusive); // Lease doesn't delist
+        assert!(!sample.is_exclusive);
     }
 
     #[test]
