@@ -217,28 +217,26 @@ mod tests {
         let producer = Address::generate(&env);
         let buyer = Address::generate(&env);
 
-        let (_xlm_addr, _xlm_client) = create_xlm_token(&env, &buyer);
+        let (xlm_addr, _xlm_client) = create_xlm_token(&env, &buyer);
 
         let sample_id = client.upload_sample(
             &producer,
             &String::from_str(&env, "Exclusive Only"),
             &String::from_str(&env, "QmExclusiveCID"),
-            &10i128,
-            &50i128,
-            &500i128,  // exclusive: 500 XLM
+            &100_000_000i128,
+            &500_000_000i128,
+            &5_000_000_000i128,
             &String::from_str(&env, "Drill"),
             &135u32,
         );
 
-        // Purchase Exclusive tier (tier=2)
-        client.purchase_license(&buyer, &sample_id, &2u32);
+        client.purchase_license(&buyer, &sample_id, &xlm_addr, &LicenseTier::Exclusive);
 
         // Sample should now be marked exclusive (unavailable)
         let sample = client.get_sample(&sample_id);
         assert!(sample.is_exclusive);
         assert_eq!(sample.total_sales, 1u32);
 
-        // Producer earns 90% of 500 XLM = 450 XLM = 4_500_000_000 stroops
         let earnings = client.get_earnings(&producer);
         assert_eq!(earnings, 4_500_000_000i128);
     }
