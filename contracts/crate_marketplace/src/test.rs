@@ -259,21 +259,18 @@ mod tests {
             &producer,
             &String::from_str(&env, "Withdraw Test"),
             &String::from_str(&env, "QmWithdrawCID"),
-            &20i128,
-            &100i128,
-            &400i128,
+            &200_000_000i128,
+            &1_000_000_000i128,
+            &4_000_000_000i128,
             &String::from_str(&env, "Hip-Hop"),
             &90u32,
         );
 
-        // Buy a Lease license
-        client.purchase_license(&buyer, &sample_id, &0u32);
+        client.purchase_license(&buyer, &sample_id, &_xlm_addr, &LicenseTier::Lease);
 
-        // Producer has 18 XLM earnings (90% of 20 XLM)
         assert_eq!(client.get_earnings(&producer), 180_000_000i128);
 
-        // Withdraw
-        let withdrawn = client.withdraw_earnings(&producer);
+        let withdrawn = client.withdraw_earnings(&producer, &_xlm_addr);
         assert_eq!(withdrawn, 180_000_000i128);
 
         // Earnings zeroed out after withdrawal
