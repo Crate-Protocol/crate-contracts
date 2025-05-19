@@ -299,9 +299,9 @@ mod tests {
             &producer,
             &String::from_str(&env, "Stats Beat"),
             &String::from_str(&env, "QmStatsCID"),
-            &10i128,
-            &50i128,
-            &200i128,
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
             &String::from_str(&env, "Afrobeats"),
             &95u32,
         );
@@ -310,12 +310,11 @@ mod tests {
         assert_eq!(s0, 1u32);
         assert_eq!(v0, 0i128);
 
-        // Purchase Premium tier: 50 XLM
-        client.purchase_license(&buyer, &sample_id, &1u32);
+        client.purchase_license(&buyer, &sample_id, &_xlm_addr, &LicenseTier::Premium);
 
         let (s1, v1) = client.get_stats();
         assert_eq!(s1, 1u32);
-        assert_eq!(v1, 500_000_000i128); // 50 XLM in stroops
+        assert_eq!(v1, 500_000_000i128);
     }
 
     #[test]
