@@ -335,18 +335,16 @@ mod tests {
             &producer,
             &String::from_str(&env, "License Test"),
             &String::from_str(&env, "QmLicCID"),
-            &10i128,
-            &50i128,
-            &200i128,
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
             &String::from_str(&env, "R&B"),
             &80u32,
         );
 
-        // No license initially
         assert_eq!(client.get_license(&buyer, &sample_id), None);
 
-        // Buy Premium license (tier=1)
-        client.purchase_license(&buyer, &sample_id, &1u32);
+        client.purchase_license(&buyer, &sample_id, &xlm_addr, &LicenseTier::Premium);
 
         assert_eq!(client.get_license(&buyer, &sample_id), Some(LicenseTier::Premium));
     }
