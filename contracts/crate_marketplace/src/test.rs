@@ -348,4 +348,15 @@ mod tests {
 
         assert_eq!(client.get_license(&buyer, &sample_id), Some(LicenseTier::Premium));
     }
+
+    #[test]
+    #[should_panic(expected = "Contract already initialized")]
+    fn test_double_init_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        client.__constructor(&1000u32, &platform);
+    }
 }
