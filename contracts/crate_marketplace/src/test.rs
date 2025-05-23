@@ -350,6 +350,76 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "BPM must be 40-300")]
+    fn test_upload_invalid_bpm_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let producer = Address::generate(&env);
+        client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Bad BPM"),
+            &String::from_str(&env, "QmBPMCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Trap"),
+            &350u32,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Not your sample")]
+    fn test_delist_non_owner_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let producer = Address::generate(&env);
+        let intruder = Address::generate(&env);
+        let sample_id = client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Protected"),
+            &String::from_str(&env, "QmProtCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "R&B"),
+            &80u32,
+        );
+        client.delist_sample(&intruder, &sample_id);
+    }
+
+    #[test]
+    #[should_panic(expected = "This beat has been sold exclusively")]
+    fn test_purchase_after_exclusive_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let producer = Address::generate(&env);
+        let buyer1 = Address::generate(&env);
+        let buyer2 = Address::generate(&env);
+        let (xlm_addr, _) = create_xlm_token(&env, &buyer1);
+        let sample_id = client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Exclusive"),
+            &String::from_str(&env, "QmExclCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Drill"),
+            &120u32,
+        );
+        client.purchase_license(&buyer1, &sample_id, &xlm_addr, &LicenseTier::Exclusive);
+        client.purchase_license(&buyer2, &sample_id, &xlm_addr, &LicenseTier::Lease);
+    }
+
+    #[test]
     #[should_panic(expected = "Contract already initialized")]
     fn test_double_init_panics() {
         let env = Env::default();
