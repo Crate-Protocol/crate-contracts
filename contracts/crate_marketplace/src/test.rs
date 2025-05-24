@@ -420,6 +420,40 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "Prices must be lease < premium < exclusive")]
+    fn test_upload_invalid_price_ordering_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let producer = Address::generate(&env);
+        client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Bad Prices"),
+            &String::from_str(&env, "QmBadCID"),
+            &500_000_000i128,
+            &100_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Trap"),
+            &140u32,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Nothing to withdraw")]
+    fn test_withdraw_zero_earnings_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let producer = Address::generate(&env);
+        let (xlm_addr, _) = create_xlm_token(&env, &producer);
+        client.withdraw_earnings(&producer, &xlm_addr);
+    }
+
+    #[test]
     #[should_panic(expected = "Contract already initialized")]
     fn test_double_init_panics() {
         let env = Env::default();
