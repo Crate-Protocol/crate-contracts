@@ -454,6 +454,37 @@ mod tests {
     }
 
     #[test]
+    fn test_get_platform_fee() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&750u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        assert_eq!(client.get_platform_fee(), 750u32);
+    }
+
+    #[test]
+    #[should_panic(expected = "Title cannot be empty")]
+    fn test_upload_empty_title_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let producer = Address::generate(&env);
+        client.upload_sample(
+            &producer,
+            &String::from_str(&env, ""),
+            &String::from_str(&env, "QmCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Trap"),
+            &140u32,
+        );
+    }
+
+    #[test]
     #[should_panic(expected = "Contract already initialized")]
     fn test_double_init_panics() {
         let env = Env::default();
