@@ -485,6 +485,27 @@ mod tests {
     }
 
     #[test]
+    fn test_bump_instance_does_not_panic() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        client.bump_instance();
+    }
+
+    #[test]
+    fn test_get_license_returns_none_before_purchase() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let buyer = Address::generate(&env);
+        assert_eq!(client.get_license(&buyer, &999u32), None);
+    }
+
+    #[test]
     #[should_panic(expected = "Contract already initialized")]
     fn test_double_init_panics() {
         let env = Env::default();
