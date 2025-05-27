@@ -506,6 +506,36 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "Fee must be <= 50%")]
+    fn test_constructor_rejects_fee_over_5000() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        env.register(CrateMarketplace, (&6000u32, &platform));
+    }
+
+    #[test]
+    #[should_panic(expected = "IPFS CID cannot be empty")]
+    fn test_upload_empty_cid_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let producer = Address::generate(&env);
+        client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Some Beat"),
+            &String::from_str(&env, ""),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Trap"),
+            &140u32,
+        );
+    }
+
+    #[test]
     #[should_panic(expected = "Contract already initialized")]
     fn test_double_init_panics() {
         let env = Env::default();
