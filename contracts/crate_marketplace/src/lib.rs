@@ -8,6 +8,7 @@ const PLATFORM_ADDRESS_KEY: &str = "plat_addr";
 const PLATFORM_FEE_KEY:     &str = "plat_fee";
 const TOTAL_SAMPLES_KEY:    &str = "tot_samp";
 const TOTAL_VOLUME_KEY:     &str = "tot_vol";
+const TOTAL_PRODUCERS_KEY:  &str = "tot_prod";
 
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -86,6 +87,8 @@ impl CrateMarketplace {
         };
         env.storage().persistent().set(&DataKey::Sample(sample_id), &sample);
         storage.set(&TOTAL_SAMPLES_KEY, &sample_id);
+        let producers: u32 = storage.get(&TOTAL_PRODUCERS_KEY).unwrap_or(0);
+        storage.set(&TOTAL_PRODUCERS_KEY, &(producers + 1));
         env.events().publish((symbol_short!("uploaded"), sample_id), uploader.clone());
         sample_id
     }
@@ -169,11 +172,12 @@ impl CrateMarketplace {
         env.storage().persistent().remove(&DataKey::Sample(sample_id));
     }
 
-    pub fn get_stats(env: Env) -> (u32, i128) {
+    pub fn get_stats(env: Env) -> (u32, i128, u32) {
         let storage = env.storage().instance();
         (
             storage.get(&TOTAL_SAMPLES_KEY).unwrap_or(0),
             storage.get(&TOTAL_VOLUME_KEY).unwrap_or(0),
+            storage.get(&TOTAL_PRODUCERS_KEY).unwrap_or(0),
         )
     }
 
