@@ -59,7 +59,7 @@ mod tests {
         let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
 
-        let (total_samples, total_volume) = client.get_stats();
+        let (total_samples, total_volume, _) = client.get_stats();
         assert_eq!(total_samples, 0u32);
         assert_eq!(total_volume, 0i128);
     }
@@ -112,7 +112,7 @@ mod tests {
         assert_eq!(id1, 1u32);
         assert_eq!(id2, 2u32);
 
-        let (total_samples, _) = client.get_stats();
+        let (total_samples, _, _) = client.get_stats();
         assert_eq!(total_samples, 2u32);
     }
 
@@ -306,13 +306,13 @@ mod tests {
             &95u32,
         );
 
-        let (s0, v0) = client.get_stats();
+        let (s0, v0, _) = client.get_stats();
         assert_eq!(s0, 1u32);
         assert_eq!(v0, 0i128);
 
         client.purchase_license(&buyer, &sample_id, &_xlm_addr, &LicenseTier::Premium);
 
-        let (s1, v1) = client.get_stats();
+        let (s1, v1, _) = client.get_stats();
         assert_eq!(s1, 1u32);
         assert_eq!(v1, 500_000_000i128);
     }
