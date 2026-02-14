@@ -284,3 +284,5 @@ impl CrateMarketplace {
 }
 
 mod test;
+
+// 1: feat: scaffold Soroban workspace with crate_market
