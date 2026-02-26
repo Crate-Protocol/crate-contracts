@@ -290,3 +290,5 @@ mod test;
 // 2: feat: implement __constructor with platform fee an
 
 // 3: feat: add SampleData struct and upload_sample func
+
+// 4: feat: implement purchase_license with 90/10 XLM sp
