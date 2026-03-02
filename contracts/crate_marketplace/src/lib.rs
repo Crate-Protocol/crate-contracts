@@ -292,3 +292,5 @@ mod test;
 // 3: feat: add SampleData struct and upload_sample func
 
 // 4: feat: implement purchase_license with 90/10 XLM sp
+
+// 5: feat: add withdraw_earnings pull pattern for produ
