@@ -294,3 +294,5 @@ mod test;
 // 4: feat: implement purchase_license with 90/10 XLM sp
 
 // 5: feat: add withdraw_earnings pull pattern for produ
+
+// 6: feat: implement three license tiers (lease, premiu
