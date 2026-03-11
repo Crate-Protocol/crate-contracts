@@ -296,3 +296,5 @@ mod test;
 // 5: feat: add withdraw_earnings pull pattern for produ
 
 // 6: feat: implement three license tiers (lease, premiu
+
+// 7: feat: add exclusive purchase auto-delist enforceme
