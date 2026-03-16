@@ -298,3 +298,5 @@ mod test;
 // 6: feat: implement three license tiers (lease, premiu
 
 // 7: feat: add exclusive purchase auto-delist enforceme
+
+// 8: feat: implement collaborator split with basis poin
