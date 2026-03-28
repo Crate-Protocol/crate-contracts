@@ -302,3 +302,5 @@ mod test;
 // 8: feat: implement collaborator split with basis poin
 
 // 9: test: add unit tests for purchase flow and split a
+
+// 10: fix: prevent double-withdrawal via claimed amount 
