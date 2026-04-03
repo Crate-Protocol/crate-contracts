@@ -304,3 +304,5 @@ mod test;
 // 9: test: add unit tests for purchase flow and split a
 
 // 10: fix: prevent double-withdrawal via claimed amount 
+
+// 11: feat: add get_samples_by_producer paginated query
