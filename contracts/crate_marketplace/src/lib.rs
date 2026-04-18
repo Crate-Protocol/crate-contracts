@@ -310,3 +310,5 @@ mod test;
 // 12: feat: implement update_prices function for produce
 
 // 13: test: add invariant tests for revenue split correc
+
+// 14: fix: validate BPM range 40-300 in upload_sample
