@@ -312,3 +312,5 @@ mod test;
 // 13: test: add invariant tests for revenue split correc
 
 // 14: fix: validate BPM range 40-300 in upload_sample
+
+// 15: feat: add delist_sample with active license guard
