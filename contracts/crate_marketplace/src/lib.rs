@@ -316,3 +316,5 @@ mod test;
 // 15: feat: add delist_sample with active license guard
 
 // 16: chore: add Makefile with build, test, deploy, opti
+
+// 17: feat: add get_active_licenses query for buyer dash
