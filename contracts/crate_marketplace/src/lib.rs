@@ -318,3 +318,5 @@ mod test;
 // 16: chore: add Makefile with build, test, deploy, opti
 
 // 17: feat: add get_active_licenses query for buyer dash
+
+// 18: fix: handle edge case when collaborator split_bps 
