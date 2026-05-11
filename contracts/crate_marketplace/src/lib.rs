@@ -320,3 +320,5 @@ mod test;
 // 17: feat: add get_active_licenses query for buyer dash
 
 // 18: fix: handle edge case when collaborator split_bps 
+
+// 19: chore: add environments.toml with testnet contract
