@@ -322,3 +322,5 @@ mod test;
 // 18: fix: handle edge case when collaborator split_bps 
 
 // 19: chore: add environments.toml with testnet contract
+
+// 20: docs: add comprehensive README with all function s
