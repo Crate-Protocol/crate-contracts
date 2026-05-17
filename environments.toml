@@ -1,0 +1,14 @@
+[testnet]
+network = "testnet"
+network_passphrase = "Test SDF Network ; September 2015"
+rpc_url = "https://soroban-testnet.stellar.org"
+horizon_url = "https://horizon-testnet.stellar.org"
+
+[testnet.contracts]
+sampled_marketplace.address = "CA7DGEWWS3VH5J2I4I7FFEB5UHK2MJSYWDKDQKXQM7GDNLI2IRATDTLG"
+
+[mainnet]
+network = "mainnet"
+network_passphrase = "Public Global Stellar Network ; September 2015"
+rpc_url = "https://soroban-rpc.stellar.org"
+horizon_url = "https://horizon.stellar.org"
