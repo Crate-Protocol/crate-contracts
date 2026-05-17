@@ -5,7 +5,7 @@ rpc_url = "https://soroban-testnet.stellar.org"
 horizon_url = "https://horizon-testnet.stellar.org"
 
 [testnet.contracts]
-sampled_marketplace.address = "CA7DGEWWS3VH5J2I4I7FFEB5UHK2MJSYWDKDQKXQM7GDNLI2IRATDTLG"
+crate_marketplace.address = "CA7DGEWWS3VH5J2I4I7FFEB5UHK2MJSYWDKDQKXQM7GDNLI2IRATDTLG"
 
 [mainnet]
 network = "mainnet"

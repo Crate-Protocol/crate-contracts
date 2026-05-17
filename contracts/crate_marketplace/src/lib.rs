@@ -1,4 +1,4 @@
-//! sampled_marketplace — Soroban smart contract for the Sampled P2P beat/sample marketplace.
+//! crate_marketplace — Soroban smart contract for the Crate P2P beat/sample marketplace.
 //!
 //! Deployed on Stellar Testnet: CA7DGEWWS3VH5J2I4I7FFEB5UHK2MJSYWDKDQKXQM7GDNLI2IRATDTLG
 //!
@@ -50,10 +50,10 @@ pub struct SampleData {
 // ─── Contract ─────────────────────────────────────────────────────────────────
 
 #[contract]
-pub struct SampledMarketplace;
+pub struct CrateMarketplace;
 
 #[contractimpl]
-impl SampledMarketplace {
+impl CrateMarketplace {
     /// One-time constructor called at deployment.
     /// `platform_fee` is in basis points (e.g., 1000 = 10%).
     pub fn __constructor(env: Env, platform_fee: u32, platform_address: Address) {

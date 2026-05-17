@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{SampledMarketplace, SampledMarketplaceClient};
+    use crate::{CrateMarketplace, CrateMarketplaceClient};
     use soroban_sdk::{
         testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation},
         token, Address, Env, IntoVal, String,
@@ -24,8 +24,8 @@ mod tests {
         env.mock_all_auths();
 
         let platform = Address::generate(&env);
-        let contract_id = env.register(SampledMarketplace, (&1000u32, &platform));
-        let client = SampledMarketplaceClient::new(&env, &contract_id);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
 
         let producer = Address::generate(&env);
         let title = String::from_str(&env, "Lo-Fi Beat #1");
@@ -49,8 +49,8 @@ mod tests {
         env.mock_all_auths();
 
         let platform = Address::generate(&env);
-        let contract_id = env.register(SampledMarketplace, (&1000u32, &platform));
-        let client = SampledMarketplaceClient::new(&env, &contract_id);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
 
         let (total_samples, total_volume) = client.get_stats();
         assert_eq!(total_samples, 0u64);
@@ -63,8 +63,8 @@ mod tests {
         env.mock_all_auths();
 
         let platform = Address::generate(&env);
-        let contract_id = env.register(SampledMarketplace, (&1000u32, &platform));
-        let client = SampledMarketplaceClient::new(&env, &contract_id);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
 
         let producer = Address::generate(&env);
         assert_eq!(client.get_earnings(&producer), 0i128);
@@ -76,8 +76,8 @@ mod tests {
         env.mock_all_auths();
 
         let platform = Address::generate(&env);
-        let contract_id = env.register(SampledMarketplace, (&1000u32, &platform));
-        let client = SampledMarketplaceClient::new(&env, &contract_id);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
 
         let producer = Address::generate(&env);
 
@@ -111,8 +111,8 @@ mod tests {
         env.mock_all_auths();
 
         let platform = Address::generate(&env);
-        let contract_id = env.register(SampledMarketplace, (&1000u32, &platform));
-        let client = SampledMarketplaceClient::new(&env, &contract_id);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
 
         let producer = Address::generate(&env);
         let sample_id = client.upload_sample(

@@ -4,7 +4,7 @@
 build:
 	cargo build --target wasm32-unknown-unknown --release
 	@mkdir -p target/wasm32-unknown-unknown/release
-	@echo "WASM artifact: target/wasm32-unknown-unknown/release/sampled_marketplace.wasm"
+	@echo "WASM artifact: target/wasm32-unknown-unknown/release/crate_marketplace.wasm"
 
 # Run all tests
 test:
@@ -26,7 +26,7 @@ clean:
 # Usage: make deploy-testnet IDENTITY=my-identity
 deploy-testnet: build
 	stellar contract deploy \
-		--wasm target/wasm32-unknown-unknown/release/sampled_marketplace.wasm \
+		--wasm target/wasm32-unknown-unknown/release/crate_marketplace.wasm \
 		--source $(IDENTITY) \
 		--network testnet
 

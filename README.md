@@ -1,6 +1,6 @@
-# sampled-contracts
+# crate-contracts
 
-Soroban smart contract for the Sampled P2P beat/sample marketplace on Stellar blockchain.
+Soroban smart contract for the Crate P2P beat/sample marketplace on Stellar blockchain.
 
 ## Deployed Contract
 

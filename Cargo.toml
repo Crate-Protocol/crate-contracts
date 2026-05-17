@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["contracts/sampled_marketplace"]
+members = ["contracts/crate_marketplace"]
 
 [workspace.dependencies]
 soroban-sdk = { version = "21.7.6", features = ["testutils"] }
