@@ -1,326 +1,166 @@
-//! crate_marketplace — Soroban smart contract for the Crate P2P beat/sample marketplace.
-//!
-//! Deployed on Stellar Testnet: CA7DGEWWS3VH5J2I4I7FFEB5UHK2MJSYWDKDQKXQM7GDNLI2IRATDTLG
-//!
-//! ## Contract Functions
-//! - `__constructor(platform_fee, platform_address)` — one-time init
-//! - `upload_sample(uploader, title, ipfs_cid, price_xlm, genre, bpm)` → sample_id (u64)
-//! - `purchase_sample(buyer, sample_id)` — transfers XLM, 90/10 split
-//! - `withdraw_earnings(producer)` — pull earnings
-//! - `get_sample(sample_id)` → SampleData
-//! - `get_earnings(address)` → i128
-//! - `get_stats()` → (u64, i128)
-
 #![no_std]
-
 use soroban_sdk::{
-    contract, contractimpl, contracttype, token, Address, Env, String,
+    contract, contractimpl, contracttype, symbol_short,
+    Address, Env, String, log, token,
 };
 
-// ─── Storage Keys ─────────────────────────────────────────────────────────────
-
-#[contracttype]
-#[derive(Clone)]
-pub enum DataKey {
-    PlatformFee,
-    PlatformAddress,
-    SampleCounter,
-    Sample(u64),
-    Earnings(Address),
-    TotalVolume,
-}
-
-// ─── Data Structures ──────────────────────────────────────────────────────────
+const PLATFORM_ADDRESS_KEY: &str = "plat_addr";
+const PLATFORM_FEE_KEY:     &str = "plat_fee";
+const TOTAL_SAMPLES_KEY:    &str = "tot_samp";
+const TOTAL_VOLUME_KEY:     &str = "tot_vol";
 
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct SampleData {
-    pub id: u64,
-    pub uploader: Address,
-    pub title: String,
-    pub ipfs_cid: String,
-    /// Price in stroops (1 XLM = 10_000_000 stroops)
-    pub price: i128,
-    pub genre: String,
-    pub bpm: u32,
-    pub sales_count: u64,
-    pub active: bool,
+    pub id:              u32,
+    pub uploader:        Address,
+    pub title:           String,
+    pub ipfs_cid:        String,
+    pub lease_price:     i128,
+    pub premium_price:   i128,
+    pub exclusive_price: i128,
+    pub genre:           String,
+    pub bpm:             u32,
+    pub is_exclusive:    bool,
+    pub total_sales:     u32,
 }
 
-// ─── Contract ─────────────────────────────────────────────────────────────────
+#[contracttype]
+pub enum DataKey {
+    Sample(u32),
+    Earnings(Address),
+    License(Address, u32),
+}
 
 #[contract]
 pub struct CrateMarketplace;
 
 #[contractimpl]
 impl CrateMarketplace {
-    /// One-time constructor called at deployment.
-    /// `platform_fee` is in basis points (e.g., 1000 = 10%).
     pub fn __constructor(env: Env, platform_fee: u32, platform_address: Address) {
-        // platform_fee should be ≤ 5000 (50%)
-        assert!(platform_fee <= 5000, "fee too high");
-        env.storage()
-            .instance()
-            .set(&DataKey::PlatformFee, &platform_fee);
-        env.storage()
-            .instance()
-            .set(&DataKey::PlatformAddress, &platform_address);
-        env.storage()
-            .instance()
-            .set(&DataKey::SampleCounter, &0u64);
-        env.storage()
-            .instance()
-            .set(&DataKey::TotalVolume, &0i128);
+        let storage = env.storage().instance();
+        if storage.has(&PLATFORM_ADDRESS_KEY) {
+            panic!("Contract already initialized");
+        }
+        assert!(platform_fee <= 5000, "Fee must be <= 50%");
+        storage.set(&PLATFORM_ADDRESS_KEY, &platform_address);
+        storage.set(&PLATFORM_FEE_KEY,     &platform_fee);
+        storage.set(&TOTAL_SAMPLES_KEY,    &0u32);
+        storage.set(&TOTAL_VOLUME_KEY,     &0i128);
+        log!(&env, "Crate marketplace deployed, fee: {}bps", platform_fee);
     }
 
-    /// Upload a new beat/sample to the marketplace.
-    /// Returns the assigned sample_id.
     pub fn upload_sample(
         env: Env,
-        uploader: Address,
-        title: String,
-        ipfs_cid: String,
-        price_xlm: i128,
-        genre: String,
-        bpm: u32,
-    ) -> u64 {
+        uploader:        Address,
+        title:           String,
+        ipfs_cid:        String,
+        lease_price:     i128,
+        premium_price:   i128,
+        exclusive_price: i128,
+        genre:           String,
+        bpm:             u32,
+    ) -> u32 {
         uploader.require_auth();
+        assert!(bpm >= 40 && bpm <= 300, "BPM must be 40-300");
+        assert!(lease_price > 0 && premium_price > 0 && exclusive_price > 0, "All prices must be positive");
+        assert!(lease_price < premium_price && premium_price < exclusive_price, "Prices must be lease < premium < exclusive");
 
-        assert!(price_xlm > 0, "price must be positive");
-        // price_xlm is in whole XLM — convert to stroops internally
-        let price_stroops = price_xlm
-            .checked_mul(10_000_000)
-            .expect("overflow in price conversion");
-
-        let counter: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::SampleCounter)
-            .unwrap_or(0);
-
-        let sample_id = counter + 1;
+        let storage    = env.storage().instance();
+        let sample_id: u32 = storage.get(&TOTAL_SAMPLES_KEY).unwrap_or(0) + 1;
 
         let sample = SampleData {
-            id: sample_id,
-            uploader: uploader.clone(),
-            title,
-            ipfs_cid,
-            price: price_stroops,
-            genre,
-            bpm,
-            sales_count: 0,
-            active: true,
+            id: sample_id, uploader, title, ipfs_cid,
+            lease_price, premium_price, exclusive_price,
+            genre, bpm, is_exclusive: false, total_sales: 0,
         };
-
-        env.storage()
-            .persistent()
-            .set(&DataKey::Sample(sample_id), &sample);
-
-        env.storage()
-            .instance()
-            .set(&DataKey::SampleCounter, &sample_id);
-
+        env.storage().persistent().set(&DataKey::Sample(sample_id), &sample);
+        storage.set(&TOTAL_SAMPLES_KEY, &sample_id);
         sample_id
     }
 
-    /// Purchase a sample. Buyer pays the price; 90% goes to producer, 10% to platform.
-    pub fn purchase_sample(env: Env, buyer: Address, sample_id: u64) {
+    /// tier: 0 = Lease, 1 = Premium, 2 = Exclusive
+    pub fn purchase_license(env: Env, buyer: Address, sample_id: u32, token_address: Address, tier: u32) {
         buyer.require_auth();
+        assert!(tier <= 2, "Invalid tier");
 
-        let mut sample: SampleData = env
-            .storage()
-            .persistent()
+        let mut sample: SampleData = env.storage().persistent()
+            .get(&DataKey::Sample(sample_id)).expect("Sample not found");
+        assert!(!sample.is_exclusive, "This beat has been sold exclusively");
+
+        let price = match tier {
+            0 => sample.lease_price,
+            1 => sample.premium_price,
+            _ => sample.exclusive_price,
+        };
+
+        let storage      = env.storage().instance();
+        let platform_fee: u32     = storage.get(&PLATFORM_FEE_KEY).unwrap_or(1000);
+        let platform_addr: Address = storage.get(&PLATFORM_ADDRESS_KEY).unwrap();
+
+        let platform_cut  = price * (platform_fee as i128) / 10_000;
+        let producer_cut  = price - platform_cut;
+
+        let token = token::Client::new(&env, &token_address);
+        token.transfer(&buyer, &sample.uploader,    &producer_cut);
+        token.transfer(&buyer, &platform_addr,       &platform_cut);
+
+        // Update producer earnings tracking
+        let key = DataKey::Earnings(sample.uploader.clone());
+        let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+        env.storage().persistent().set(&key, &(current + producer_cut));
+
+        // Record license
+        env.storage().persistent().set(&DataKey::License(buyer, sample_id), &tier);
+
+        // Update stats
+        sample.total_sales += 1;
+        if tier == 2 { sample.is_exclusive = true; }
+        env.storage().persistent().set(&DataKey::Sample(sample_id), &sample);
+
+        let total_vol: i128 = storage.get(&TOTAL_VOLUME_KEY).unwrap_or(0);
+        storage.set(&TOTAL_VOLUME_KEY, &(total_vol + price));
+
+        log!(&env, "License sold: sample={}, tier={}, price={}", sample_id, tier, price);
+    }
+
+    pub fn get_sample(env: Env, sample_id: u32) -> SampleData {
+        env.storage().persistent()
             .get(&DataKey::Sample(sample_id))
-            .expect("sample not found");
-
-        assert!(sample.active, "sample not available");
-
-        let platform_fee: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::PlatformFee)
-            .unwrap_or(1000); // default 10%
-
-        let platform_address: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::PlatformAddress)
-            .expect("platform address not set");
-
-        let price = sample.price;
-
-        // Calculate splits (platform_fee is in basis points, 10000 = 100%)
-        let platform_cut = price
-            .checked_mul(platform_fee as i128)
-            .expect("overflow")
-            .checked_div(10_000)
-            .expect("div error");
-        let producer_cut = price
-            .checked_sub(platform_cut)
-            .expect("underflow in split");
-
-        // Transfer XLM from buyer to the contract itself as escrow
-        // Native XLM on Stellar is accessed via the token interface using
-        // the native asset contract address. Here we use the well-known
-        // testnet SAC for native XLM.
-        let xlm_contract = Address::from_str(
-            &env,
-            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-        );
-        let token_client = token::Client::new(&env, &xlm_contract);
-
-        // Pull payment from buyer into contract account (current contract address)
-        let contract_address = env.current_contract_address();
-        token_client.transfer(&buyer, &contract_address, &price);
-
-        // Distribute immediately: platform cut
-        token_client.transfer(&contract_address, &platform_address, &platform_cut);
-
-        // Accumulate producer earnings (held in contract storage for pull pattern)
-        let current_earnings: i128 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Earnings(sample.uploader.clone()))
-            .unwrap_or(0);
-        env.storage().persistent().set(
-            &DataKey::Earnings(sample.uploader.clone()),
-            &(current_earnings + producer_cut),
-        );
-
-        // Update sample sales count
-        sample.sales_count += 1;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Sample(sample_id), &sample);
-
-        // Update total volume
-        let total_volume: i128 = env
-            .storage()
-            .instance()
-            .get(&DataKey::TotalVolume)
-            .unwrap_or(0);
-        env.storage()
-            .instance()
-            .set(&DataKey::TotalVolume, &(total_volume + price));
+            .expect("Sample not found")
     }
 
-    /// Producer withdraws their accumulated earnings.
-    pub fn withdraw_earnings(env: Env, producer: Address) -> i128 {
-        producer.require_auth();
-
-        let earnings: i128 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Earnings(producer.clone()))
-            .unwrap_or(0);
-
-        assert!(earnings > 0, "no earnings to withdraw");
-
-        // Transfer from contract to producer
-        let xlm_contract = Address::from_str(
-            &env,
-            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-        );
-        let token_client = token::Client::new(&env, &xlm_contract);
-        let contract_address = env.current_contract_address();
-
-        token_client.transfer(&contract_address, &producer, &earnings);
-
-        // Zero out earnings
-        env.storage()
-            .persistent()
-            .set(&DataKey::Earnings(producer), &0i128);
-
-        earnings
-    }
-
-    /// Read a sample by ID.
-    pub fn get_sample(env: Env, sample_id: u64) -> SampleData {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Sample(sample_id))
-            .expect("sample not found")
-    }
-
-    /// Read accumulated earnings for a producer address.
     pub fn get_earnings(env: Env, address: Address) -> i128 {
-        env.storage()
-            .persistent()
+        env.storage().persistent()
             .get(&DataKey::Earnings(address))
             .unwrap_or(0)
     }
 
-    /// Return global stats: (total_samples, total_volume_in_stroops)
-    pub fn get_stats(env: Env) -> (u64, i128) {
-        let total_samples: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::SampleCounter)
-            .unwrap_or(0);
-        let total_volume: i128 = env
-            .storage()
-            .instance()
-            .get(&DataKey::TotalVolume)
-            .unwrap_or(0);
-        (total_samples, total_volume)
+    pub fn withdraw_earnings(env: Env, producer: Address, token_address: Address) {
+        producer.require_auth();
+        let key      = DataKey::Earnings(producer.clone());
+        let earnings: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+        assert!(earnings > 0, "Nothing to withdraw");
+        env.storage().persistent().set(&key, &0i128);
+        let token = token::Client::new(&env, &token_address);
+        token.transfer(&env.current_contract_address(), &producer, &earnings);
+        log!(&env, "Withdrawn: {} stroops to {}", earnings, producer);
     }
 
-    /// Deactivate (delist) a sample. Only the uploader can do this.
-    pub fn delist_sample(env: Env, uploader: Address, sample_id: u64) {
+    pub fn delist_sample(env: Env, uploader: Address, sample_id: u32) {
         uploader.require_auth();
+        let sample: SampleData = env.storage().persistent()
+            .get(&DataKey::Sample(sample_id)).expect("Sample not found");
+        assert!(sample.uploader == uploader, "Not your sample");
+        assert!(sample.total_sales == 0, "Cannot delist a sample with existing licenses");
+        env.storage().persistent().remove(&DataKey::Sample(sample_id));
+    }
 
-        let mut sample: SampleData = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Sample(sample_id))
-            .expect("sample not found");
-
-        assert!(sample.uploader == uploader, "not the owner");
-        sample.active = false;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Sample(sample_id), &sample);
+    pub fn get_stats(env: Env) -> (u32, i128) {
+        let storage = env.storage().instance();
+        (
+            storage.get(&TOTAL_SAMPLES_KEY).unwrap_or(0),
+            storage.get(&TOTAL_VOLUME_KEY).unwrap_or(0),
+        )
     }
 }
-
-mod test;
-
-// 1: feat: scaffold Soroban workspace with crate_market
-
-// 2: feat: implement __constructor with platform fee an
-
-// 3: feat: add SampleData struct and upload_sample func
-
-// 4: feat: implement purchase_license with 90/10 XLM sp
-
-// 5: feat: add withdraw_earnings pull pattern for produ
-
-// 6: feat: implement three license tiers (lease, premiu
-
-// 7: feat: add exclusive purchase auto-delist enforceme
-
-// 8: feat: implement collaborator split with basis poin
-
-// 9: test: add unit tests for purchase flow and split a
-
-// 10: fix: prevent double-withdrawal via claimed amount 
-
-// 11: feat: add get_samples_by_producer paginated query
-
-// 12: feat: implement update_prices function for produce
-
-// 13: test: add invariant tests for revenue split correc
-
-// 14: fix: validate BPM range 40-300 in upload_sample
-
-// 15: feat: add delist_sample with active license guard
-
-// 16: chore: add Makefile with build, test, deploy, opti
-
-// 17: feat: add get_active_licenses query for buyer dash
-
-// 18: fix: handle edge case when collaborator split_bps 
-
-// 19: chore: add environments.toml with testnet contract
-
-// 20: docs: add comprehensive README with all function s

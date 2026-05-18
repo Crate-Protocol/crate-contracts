@@ -2,6 +2,16 @@
 
 Soroban smart contract for the Crate P2P beat/sample marketplace on Stellar blockchain.
 
+## Currently Building
+
+| Feature | Status |
+|---|---|
+| Core marketplace contract | Done |
+| Three license tiers | Done |
+| Collaborator revenue split | In Progress |
+| Dispute resolution mechanism | Planned |
+| Mainnet deployment | Planned |
+
 ## Deployed Contract
 
 **Testnet:** `CA7DGEWWS3VH5J2I4I7FFEB5UHK2MJSYWDKDQKXQM7GDNLI2IRATDTLG`
