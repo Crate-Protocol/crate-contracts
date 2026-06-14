@@ -8,6 +8,7 @@ const PLATFORM_ADDRESS_KEY: &str = "plat_addr";
 const PLATFORM_FEE_KEY:     &str = "plat_fee";
 const TOTAL_SAMPLES_KEY:    &str = "tot_samp";
 const TOTAL_VOLUME_KEY:     &str = "tot_vol";
+const TOTAL_PRODUCERS_KEY:  &str = "tot_prod";
 
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -23,6 +24,14 @@ pub struct SampleData {
     pub bpm:             u32,
     pub is_exclusive:    bool,
     pub total_sales:     u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub enum LicenseTier {
+    Lease,
+    Premium,
+    Exclusive,
 }
 
 #[contracttype]
@@ -62,6 +71,8 @@ impl CrateMarketplace {
         bpm:             u32,
     ) -> u32 {
         uploader.require_auth();
+        assert!(title.len() > 0, "Title cannot be empty");
+        assert!(ipfs_cid.len() > 0, "IPFS CID cannot be empty");
         assert!(bpm >= 40 && bpm <= 300, "BPM must be 40-300");
         assert!(lease_price > 0 && premium_price > 0 && exclusive_price > 0, "All prices must be positive");
         assert!(lease_price < premium_price && premium_price < exclusive_price, "Prices must be lease < premium < exclusive");
@@ -76,22 +87,23 @@ impl CrateMarketplace {
         };
         env.storage().persistent().set(&DataKey::Sample(sample_id), &sample);
         storage.set(&TOTAL_SAMPLES_KEY, &sample_id);
+        let producers: u32 = storage.get(&TOTAL_PRODUCERS_KEY).unwrap_or(0);
+        storage.set(&TOTAL_PRODUCERS_KEY, &(producers + 1));
+        env.events().publish((symbol_short!("uploaded"), sample_id), uploader.clone());
         sample_id
     }
 
-    /// tier: 0 = Lease, 1 = Premium, 2 = Exclusive
-    pub fn purchase_license(env: Env, buyer: Address, sample_id: u32, token_address: Address, tier: u32) {
+    pub fn purchase_license(env: Env, buyer: Address, sample_id: u32, token_address: Address, tier: LicenseTier) {
         buyer.require_auth();
-        assert!(tier <= 2, "Invalid tier");
 
         let mut sample: SampleData = env.storage().persistent()
             .get(&DataKey::Sample(sample_id)).expect("Sample not found");
         assert!(!sample.is_exclusive, "This beat has been sold exclusively");
 
         let price = match tier {
-            0 => sample.lease_price,
-            1 => sample.premium_price,
-            _ => sample.exclusive_price,
+            LicenseTier::Lease     => sample.lease_price,
+            LicenseTier::Premium   => sample.premium_price,
+            LicenseTier::Exclusive => sample.exclusive_price,
         };
 
         let storage      = env.storage().instance();
@@ -105,23 +117,21 @@ impl CrateMarketplace {
         token.transfer(&buyer, &sample.uploader,    &producer_cut);
         token.transfer(&buyer, &platform_addr,       &platform_cut);
 
-        // Update producer earnings tracking
         let key = DataKey::Earnings(sample.uploader.clone());
         let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         env.storage().persistent().set(&key, &(current + producer_cut));
 
-        // Record license
         env.storage().persistent().set(&DataKey::License(buyer, sample_id), &tier);
 
-        // Update stats
         sample.total_sales += 1;
-        if tier == 2 { sample.is_exclusive = true; }
+        if tier == LicenseTier::Exclusive { sample.is_exclusive = true; }
         env.storage().persistent().set(&DataKey::Sample(sample_id), &sample);
 
         let total_vol: i128 = storage.get(&TOTAL_VOLUME_KEY).unwrap_or(0);
         storage.set(&TOTAL_VOLUME_KEY, &(total_vol + price));
 
-        log!(&env, "License sold: sample={}, tier={}, price={}", sample_id, tier, price);
+        env.events().publish((symbol_short!("licensed"), sample_id), (buyer, price));
+        log!(&env, "License sold: sample={}, price={}", sample_id, price);
     }
 
     pub fn get_sample(env: Env, sample_id: u32) -> SampleData {
@@ -136,7 +146,7 @@ impl CrateMarketplace {
             .unwrap_or(0)
     }
 
-    pub fn withdraw_earnings(env: Env, producer: Address, token_address: Address) {
+    pub fn withdraw_earnings(env: Env, producer: Address, token_address: Address) -> i128 {
         producer.require_auth();
         let key      = DataKey::Earnings(producer.clone());
         let earnings: i128 = env.storage().persistent().get(&key).unwrap_or(0);
@@ -145,6 +155,12 @@ impl CrateMarketplace {
         let token = token::Client::new(&env, &token_address);
         token.transfer(&env.current_contract_address(), &producer, &earnings);
         log!(&env, "Withdrawn: {} stroops to {}", earnings, producer);
+        earnings
+    }
+
+    pub fn get_license(env: Env, buyer: Address, sample_id: u32) -> Option<LicenseTier> {
+        env.storage().persistent()
+            .get(&DataKey::License(buyer, sample_id))
     }
 
     pub fn delist_sample(env: Env, uploader: Address, sample_id: u32) {
@@ -156,11 +172,22 @@ impl CrateMarketplace {
         env.storage().persistent().remove(&DataKey::Sample(sample_id));
     }
 
-    pub fn get_stats(env: Env) -> (u32, i128) {
+    pub fn get_stats(env: Env) -> (u32, i128, u32) {
         let storage = env.storage().instance();
         (
             storage.get(&TOTAL_SAMPLES_KEY).unwrap_or(0),
             storage.get(&TOTAL_VOLUME_KEY).unwrap_or(0),
+            storage.get(&TOTAL_PRODUCERS_KEY).unwrap_or(0),
         )
+    }
+
+    pub fn get_platform_fee(env: Env) -> u32 {
+        env.storage().instance()
+            .get(&PLATFORM_FEE_KEY)
+            .unwrap_or(0)
+    }
+
+    pub fn bump_instance(env: Env) {
+        env.storage().instance().extend_ttl(17_280, 17_280);
     }
 }

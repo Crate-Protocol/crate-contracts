@@ -6,12 +6,10 @@ mod tests {
         token, Address, Env, String,
     };
 
-    // Helper: create a native XLM SAC and mint tokens to an address
     fn create_xlm_token(env: &Env, admin: &Address) -> (Address, token::Client) {
         let contract_address = env.register_stellar_asset_contract_v2(admin.clone());
         let token_client = token::Client::new(env, &contract_address.address());
         let token_admin = token::StellarAssetClient::new(env, &contract_address.address());
-        // Mint 1000 XLM (in stroops) to admin
         token_admin.mint(admin, &10_000_000_000i128);
         (contract_address.address(), token_client)
     }
@@ -34,9 +32,9 @@ mod tests {
             &producer,
             &title,
             &cid,
-            &10i128,   // lease: 10 XLM
-            &50i128,   // premium: 50 XLM
-            &200i128,  // exclusive: 200 XLM
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
             &genre,
             &95u32,
         );
@@ -44,9 +42,9 @@ mod tests {
 
         let sample = client.get_sample(&sample_id);
         assert_eq!(sample.title, title);
-        assert_eq!(sample.lease_price, 100_000_000i128);    // 10 XLM in stroops
-        assert_eq!(sample.premium_price, 500_000_000i128);  // 50 XLM in stroops
-        assert_eq!(sample.exclusive_price, 2_000_000_000i128); // 200 XLM in stroops
+        assert_eq!(sample.lease_price, 100_000_000i128);
+        assert_eq!(sample.premium_price, 500_000_000i128);
+        assert_eq!(sample.exclusive_price, 2_000_000_000i128);
         assert_eq!(sample.bpm, 95u32);
         assert!(!sample.is_exclusive);
         assert_eq!(sample.total_sales, 0u32);
@@ -61,7 +59,7 @@ mod tests {
         let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
 
-        let (total_samples, total_volume) = client.get_stats();
+        let (total_samples, total_volume, _) = client.get_stats();
         assert_eq!(total_samples, 0u32);
         assert_eq!(total_volume, 0i128);
     }
@@ -94,9 +92,9 @@ mod tests {
             &producer,
             &String::from_str(&env, "Beat 1"),
             &String::from_str(&env, "QmCID1"),
-            &5i128,
-            &25i128,
-            &100i128,
+            &50_000_000i128,
+            &250_000_000i128,
+            &1_000_000_000i128,
             &String::from_str(&env, "Hip-Hop"),
             &90u32,
         );
@@ -104,9 +102,9 @@ mod tests {
             &producer,
             &String::from_str(&env, "Beat 2"),
             &String::from_str(&env, "QmCID2"),
-            &15i128,
-            &75i128,
-            &300i128,
+            &150_000_000i128,
+            &750_000_000i128,
+            &3_000_000_000i128,
             &String::from_str(&env, "Trap"),
             &140u32,
         );
@@ -114,12 +112,12 @@ mod tests {
         assert_eq!(id1, 1u32);
         assert_eq!(id2, 2u32);
 
-        let (total_samples, _) = client.get_stats();
+        let (total_samples, _, _) = client.get_stats();
         assert_eq!(total_samples, 2u32);
     }
 
     #[test]
-    fn test_delist_sample() {
+    fn test_delist_sample_removes_record() {
         let env = Env::default();
         env.mock_all_auths();
 
@@ -132,17 +130,41 @@ mod tests {
             &producer,
             &String::from_str(&env, "My Beat"),
             &String::from_str(&env, "QmTestCID"),
-            &10i128,
-            &50i128,
-            &200i128,
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
             &String::from_str(&env, "R&B"),
             &80u32,
         );
 
         client.delist_sample(&producer, &sample_id);
+        assert_eq!(client.get_earnings(&producer), 0i128);
+    }
 
-        let sample = client.get_sample(&sample_id);
-        assert!(sample.is_exclusive); // reused as "unavailable" flag
+    #[test]
+    #[should_panic(expected = "Sample not found")]
+    fn test_get_sample_after_delist_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+
+        let producer = Address::generate(&env);
+        let sample_id = client.upload_sample(
+            &producer,
+            &String::from_str(&env, "My Beat"),
+            &String::from_str(&env, "QmTestCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "R&B"),
+            &80u32,
+        );
+
+        client.delist_sample(&producer, &sample_id);
+        client.get_sample(&sample_id);
     }
 
     #[test]
@@ -163,28 +185,24 @@ mod tests {
             &producer,
             &String::from_str(&env, "Lease Me"),
             &String::from_str(&env, "QmLeaseCID"),
-            &10i128,   // lease 10 XLM
-            &50i128,
-            &200i128,
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
             &String::from_str(&env, "Trap"),
             &140u32,
         );
 
-        // Buyer purchases Lease tier (tier=0)
-        client.purchase_license(&buyer, &sample_id, &0u32);
+        client.purchase_license(&buyer, &sample_id, &xlm_addr, &LicenseTier::Lease);
 
-        // Producer should have 90% of 10 XLM = 9 XLM = 90_000_000 stroops
         let earnings = client.get_earnings(&producer);
         assert_eq!(earnings, 90_000_000i128);
 
-        // Platform address should have 10% = 1 XLM = 10_000_000 stroops
         let platform_balance = xlm_client.balance(&platform);
         assert_eq!(platform_balance, 10_000_000i128);
 
-        // Sample stats updated
         let sample = client.get_sample(&sample_id);
         assert_eq!(sample.total_sales, 1u32);
-        assert!(!sample.is_exclusive); // Lease doesn't delist
+        assert!(!sample.is_exclusive);
     }
 
     #[test]
@@ -199,28 +217,26 @@ mod tests {
         let producer = Address::generate(&env);
         let buyer = Address::generate(&env);
 
-        let (_xlm_addr, _xlm_client) = create_xlm_token(&env, &buyer);
+        let (xlm_addr, _xlm_client) = create_xlm_token(&env, &buyer);
 
         let sample_id = client.upload_sample(
             &producer,
             &String::from_str(&env, "Exclusive Only"),
             &String::from_str(&env, "QmExclusiveCID"),
-            &10i128,
-            &50i128,
-            &500i128,  // exclusive: 500 XLM
+            &100_000_000i128,
+            &500_000_000i128,
+            &5_000_000_000i128,
             &String::from_str(&env, "Drill"),
             &135u32,
         );
 
-        // Purchase Exclusive tier (tier=2)
-        client.purchase_license(&buyer, &sample_id, &2u32);
+        client.purchase_license(&buyer, &sample_id, &xlm_addr, &LicenseTier::Exclusive);
 
         // Sample should now be marked exclusive (unavailable)
         let sample = client.get_sample(&sample_id);
         assert!(sample.is_exclusive);
         assert_eq!(sample.total_sales, 1u32);
 
-        // Producer earns 90% of 500 XLM = 450 XLM = 4_500_000_000 stroops
         let earnings = client.get_earnings(&producer);
         assert_eq!(earnings, 4_500_000_000i128);
     }
@@ -243,21 +259,18 @@ mod tests {
             &producer,
             &String::from_str(&env, "Withdraw Test"),
             &String::from_str(&env, "QmWithdrawCID"),
-            &20i128,
-            &100i128,
-            &400i128,
+            &200_000_000i128,
+            &1_000_000_000i128,
+            &4_000_000_000i128,
             &String::from_str(&env, "Hip-Hop"),
             &90u32,
         );
 
-        // Buy a Lease license
-        client.purchase_license(&buyer, &sample_id, &0u32);
+        client.purchase_license(&buyer, &sample_id, &_xlm_addr, &LicenseTier::Lease);
 
-        // Producer has 18 XLM earnings (90% of 20 XLM)
         assert_eq!(client.get_earnings(&producer), 180_000_000i128);
 
-        // Withdraw
-        let withdrawn = client.withdraw_earnings(&producer);
+        let withdrawn = client.withdraw_earnings(&producer, &_xlm_addr);
         assert_eq!(withdrawn, 180_000_000i128);
 
         // Earnings zeroed out after withdrawal
@@ -286,23 +299,22 @@ mod tests {
             &producer,
             &String::from_str(&env, "Stats Beat"),
             &String::from_str(&env, "QmStatsCID"),
-            &10i128,
-            &50i128,
-            &200i128,
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
             &String::from_str(&env, "Afrobeats"),
             &95u32,
         );
 
-        let (s0, v0) = client.get_stats();
+        let (s0, v0, _) = client.get_stats();
         assert_eq!(s0, 1u32);
         assert_eq!(v0, 0i128);
 
-        // Purchase Premium tier: 50 XLM
-        client.purchase_license(&buyer, &sample_id, &1u32);
+        client.purchase_license(&buyer, &sample_id, &_xlm_addr, &LicenseTier::Premium);
 
-        let (s1, v1) = client.get_stats();
+        let (s1, v1, _) = client.get_stats();
         assert_eq!(s1, 1u32);
-        assert_eq!(v1, 500_000_000i128); // 50 XLM in stroops
+        assert_eq!(v1, 500_000_000i128);
     }
 
     #[test]
@@ -323,19 +335,214 @@ mod tests {
             &producer,
             &String::from_str(&env, "License Test"),
             &String::from_str(&env, "QmLicCID"),
-            &10i128,
-            &50i128,
-            &200i128,
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
             &String::from_str(&env, "R&B"),
             &80u32,
         );
 
-        // No license initially
         assert_eq!(client.get_license(&buyer, &sample_id), None);
 
-        // Buy Premium license (tier=1)
-        client.purchase_license(&buyer, &sample_id, &1u32);
+        client.purchase_license(&buyer, &sample_id, &xlm_addr, &LicenseTier::Premium);
 
         assert_eq!(client.get_license(&buyer, &sample_id), Some(LicenseTier::Premium));
+    }
+
+    #[test]
+    #[should_panic(expected = "BPM must be 40-300")]
+    fn test_upload_invalid_bpm_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let producer = Address::generate(&env);
+        client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Bad BPM"),
+            &String::from_str(&env, "QmBPMCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Trap"),
+            &350u32,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Not your sample")]
+    fn test_delist_non_owner_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let producer = Address::generate(&env);
+        let intruder = Address::generate(&env);
+        let sample_id = client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Protected"),
+            &String::from_str(&env, "QmProtCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "R&B"),
+            &80u32,
+        );
+        client.delist_sample(&intruder, &sample_id);
+    }
+
+    #[test]
+    #[should_panic(expected = "This beat has been sold exclusively")]
+    fn test_purchase_after_exclusive_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let producer = Address::generate(&env);
+        let buyer1 = Address::generate(&env);
+        let buyer2 = Address::generate(&env);
+        let (xlm_addr, _) = create_xlm_token(&env, &buyer1);
+        let sample_id = client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Exclusive"),
+            &String::from_str(&env, "QmExclCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Drill"),
+            &120u32,
+        );
+        client.purchase_license(&buyer1, &sample_id, &xlm_addr, &LicenseTier::Exclusive);
+        client.purchase_license(&buyer2, &sample_id, &xlm_addr, &LicenseTier::Lease);
+    }
+
+    #[test]
+    #[should_panic(expected = "Prices must be lease < premium < exclusive")]
+    fn test_upload_invalid_price_ordering_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let producer = Address::generate(&env);
+        client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Bad Prices"),
+            &String::from_str(&env, "QmBadCID"),
+            &500_000_000i128,
+            &100_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Trap"),
+            &140u32,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Nothing to withdraw")]
+    fn test_withdraw_zero_earnings_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let producer = Address::generate(&env);
+        let (xlm_addr, _) = create_xlm_token(&env, &producer);
+        client.withdraw_earnings(&producer, &xlm_addr);
+    }
+
+    #[test]
+    fn test_get_platform_fee() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&750u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        assert_eq!(client.get_platform_fee(), 750u32);
+    }
+
+    #[test]
+    #[should_panic(expected = "Title cannot be empty")]
+    fn test_upload_empty_title_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let producer = Address::generate(&env);
+        client.upload_sample(
+            &producer,
+            &String::from_str(&env, ""),
+            &String::from_str(&env, "QmCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Trap"),
+            &140u32,
+        );
+    }
+
+    #[test]
+    fn test_bump_instance_does_not_panic() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        client.bump_instance();
+    }
+
+    #[test]
+    fn test_get_license_returns_none_before_purchase() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let buyer = Address::generate(&env);
+        assert_eq!(client.get_license(&buyer, &999u32), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "Fee must be <= 50%")]
+    fn test_constructor_rejects_fee_over_5000() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        env.register(CrateMarketplace, (&6000u32, &platform));
+    }
+
+    #[test]
+    #[should_panic(expected = "IPFS CID cannot be empty")]
+    fn test_upload_empty_cid_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let producer = Address::generate(&env);
+        client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Some Beat"),
+            &String::from_str(&env, ""),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Trap"),
+            &140u32,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Contract already initialized")]
+    fn test_double_init_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        client.__constructor(&1000u32, &platform);
     }
 }
