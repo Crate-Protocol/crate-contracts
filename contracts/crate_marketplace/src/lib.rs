@@ -10,6 +10,11 @@ const TOTAL_SAMPLES_KEY:    &str = "tot_samp";
 const TOTAL_VOLUME_KEY:     &str = "tot_vol";
 const TOTAL_PRODUCERS_KEY:  &str = "tot_prod";
 
+// ~1 year of ledgers at 5 s/ledger; entries are bumped to this TTL on every access.
+const PERSISTENT_BUMP_AMOUNT: u32 = 535_680;
+// If the remaining TTL is still above this threshold the bump is a no-op (saves fees).
+const PERSISTENT_MIN_TTL: u32 = 17_280; // ~1 day
+
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct SampleData {
@@ -85,11 +90,14 @@ impl CrateMarketplace {
             lease_price, premium_price, exclusive_price,
             genre, bpm, is_exclusive: false, total_sales: 0,
         };
-        env.storage().persistent().set(&DataKey::Sample(sample_id), &sample);
+        let sample_key = DataKey::Sample(sample_id);
+        env.storage().persistent().set(&sample_key, &sample);
+        env.storage().persistent().extend_ttl(&sample_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
+
         storage.set(&TOTAL_SAMPLES_KEY, &sample_id);
         let producers: u32 = storage.get(&TOTAL_PRODUCERS_KEY).unwrap_or(0);
         storage.set(&TOTAL_PRODUCERS_KEY, &(producers + 1));
-        env.events().publish((symbol_short!("uploaded"), sample_id), uploader.clone());
+        env.events().publish((symbol_short!("uploaded"), sample_id), sample.uploader.clone());
         sample_id
     }
 
@@ -105,8 +113,11 @@ impl CrateMarketplace {
             panic!("License already owned");
         }
 
+        let sample_key = DataKey::Sample(sample_id);
         let mut sample: SampleData = env.storage().persistent()
-            .get(&DataKey::Sample(sample_id)).expect("Sample not found");
+            .get(&sample_key).expect("Sample not found");
+        env.storage().persistent().extend_ttl(&sample_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
+
         assert!(!sample.is_exclusive, "This beat has been sold exclusively");
 
         let price = match tier {
@@ -130,15 +141,18 @@ impl CrateMarketplace {
         token.transfer(&buyer, &env.current_contract_address(), &producer_cut);
         token.transfer(&buyer, &platform_addr,                  &platform_cut);
 
-        let key = DataKey::Earnings(sample.uploader.clone());
-        let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
-        env.storage().persistent().set(&key, &(current + producer_cut));
+        let earnings_key = DataKey::Earnings(sample.uploader.clone());
+        let current: i128 = env.storage().persistent().get(&earnings_key).unwrap_or(0);
+        env.storage().persistent().set(&earnings_key, &(current + producer_cut));
+        env.storage().persistent().extend_ttl(&earnings_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
 
         env.storage().persistent().set(&license_key, &tier);
+        env.storage().persistent().extend_ttl(&license_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
 
         sample.total_sales += 1;
         if tier == LicenseTier::Exclusive { sample.is_exclusive = true; }
-        env.storage().persistent().set(&DataKey::Sample(sample_id), &sample);
+        env.storage().persistent().set(&sample_key, &sample);
+        env.storage().persistent().extend_ttl(&sample_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
 
         let total_vol: i128 = storage.get(&TOTAL_VOLUME_KEY).unwrap_or(0);
         storage.set(&TOTAL_VOLUME_KEY, &(total_vol + price));
@@ -148,15 +162,23 @@ impl CrateMarketplace {
     }
 
     pub fn get_sample(env: Env, sample_id: u32) -> SampleData {
-        env.storage().persistent()
-            .get(&DataKey::Sample(sample_id))
-            .expect("Sample not found")
+        let key = DataKey::Sample(sample_id);
+        let sample: SampleData = env.storage().persistent()
+            .get(&key)
+            .expect("Sample not found");
+        env.storage().persistent().extend_ttl(&key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
+        sample
     }
 
     pub fn get_earnings(env: Env, address: Address) -> i128 {
-        env.storage().persistent()
-            .get(&DataKey::Earnings(address))
-            .unwrap_or(0)
+        let key = DataKey::Earnings(address);
+        let earnings: i128 = env.storage().persistent()
+            .get(&key)
+            .unwrap_or(0);
+        if earnings > 0 {
+            env.storage().persistent().extend_ttl(&key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
+        }
+        earnings
     }
 
     pub fn withdraw_earnings(env: Env, producer: Address, token_address: Address) -> i128 {
@@ -165,6 +187,7 @@ impl CrateMarketplace {
         let earnings: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         assert!(earnings > 0, "Nothing to withdraw");
         env.storage().persistent().set(&key, &0i128);
+        env.storage().persistent().extend_ttl(&key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
         let token = token::Client::new(&env, &token_address);
         token.transfer(&env.current_contract_address(), &producer, &earnings);
         log!(&env, "Withdrawn: {} stroops to {}", earnings, producer);
@@ -172,8 +195,12 @@ impl CrateMarketplace {
     }
 
     pub fn get_license(env: Env, buyer: Address, sample_id: u32) -> Option<LicenseTier> {
-        env.storage().persistent()
-            .get(&DataKey::License(buyer, sample_id))
+        let key = DataKey::License(buyer, sample_id);
+        let result: Option<LicenseTier> = env.storage().persistent().get(&key);
+        if result.is_some() {
+            env.storage().persistent().extend_ttl(&key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
+        }
+        result
     }
 
     pub fn delist_sample(env: Env, uploader: Address, sample_id: u32) {
@@ -198,6 +225,14 @@ impl CrateMarketplace {
         env.storage().instance()
             .get(&PLATFORM_FEE_KEY)
             .unwrap_or(0)
+    }
+
+    // Allows anyone (e.g. keepers, the frontend) to extend a sample's on-chain TTL
+    // without triggering a purchase. Useful for active listings approaching expiry.
+    pub fn bump_sample(env: Env, sample_id: u32) {
+        let key = DataKey::Sample(sample_id);
+        assert!(env.storage().persistent().has(&key), "Sample not found");
+        env.storage().persistent().extend_ttl(&key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
     }
 
     pub fn bump_instance(env: Env) {
