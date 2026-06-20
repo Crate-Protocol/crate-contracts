@@ -541,6 +541,41 @@ mod tests {
     }
 
     #[test]
+    fn test_bump_sample_extends_ttl_without_panic() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let producer = Address::generate(&env);
+        let sample_id = client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Bump Test"),
+            &String::from_str(&env, "QmBumpCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Trap"),
+            &140u32,
+        );
+        // Must not panic and sample must still be readable afterwards.
+        client.bump_sample(&sample_id);
+        let sample = client.get_sample(&sample_id);
+        assert_eq!(sample.id, sample_id);
+    }
+
+    #[test]
+    #[should_panic(expected = "Sample not found")]
+    fn test_bump_sample_nonexistent_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        client.bump_sample(&999u32);
+    }
+
+    #[test]
     #[should_panic(expected = "IPFS CID cannot be empty")]
     fn test_upload_empty_cid_panics() {
         let env = Env::default();
