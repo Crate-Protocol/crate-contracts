@@ -6,7 +6,7 @@ mod tests {
         token, Address, Env, String,
     };
 
-    fn create_xlm_token(env: &Env, admin: &Address) -> (Address, token::Client) {
+    fn create_xlm_token<'a>(env: &'a Env, admin: &Address) -> (Address, token::Client<'a>) {
         let contract_address = env.register_stellar_asset_contract_v2(admin.clone());
         let token_client = token::Client::new(env, &contract_address.address());
         let token_admin = token::StellarAssetClient::new(env, &contract_address.address());
@@ -329,7 +329,7 @@ mod tests {
         let producer = Address::generate(&env);
         let buyer = Address::generate(&env);
 
-        let (_xlm_addr, _xlm_client) = create_xlm_token(&env, &buyer);
+        let (xlm_addr, _xlm_client) = create_xlm_token(&env, &buyer);
 
         let sample_id = client.upload_sample(
             &producer,
@@ -417,6 +417,32 @@ mod tests {
         );
         client.purchase_license(&buyer1, &sample_id, &xlm_addr, &LicenseTier::Exclusive);
         client.purchase_license(&buyer2, &sample_id, &xlm_addr, &LicenseTier::Lease);
+    }
+
+    #[test]
+    #[should_panic(expected = "License already owned")]
+    fn test_repeat_purchase_same_buyer_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let producer = Address::generate(&env);
+        let buyer = Address::generate(&env);
+        let (xlm_addr, _) = create_xlm_token(&env, &buyer);
+        let sample_id = client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Buy Once"),
+            &String::from_str(&env, "QmOnceCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Trap"),
+            &140u32,
+        );
+        client.purchase_license(&buyer, &sample_id, &xlm_addr, &LicenseTier::Lease);
+        // Second purchase by the same buyer for the same sample must be rejected.
+        client.purchase_license(&buyer, &sample_id, &xlm_addr, &LicenseTier::Premium);
     }
 
     #[test]
@@ -535,14 +561,9 @@ mod tests {
         );
     }
 
-    #[test]
-    #[should_panic(expected = "Contract already initialized")]
-    fn test_double_init_panics() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
-        let client = CrateMarketplaceClient::new(&env, &contract_id);
-        client.__constructor(&1000u32, &platform);
-    }
+    // Note: there is no `test_double_init_panics`. Under soroban-sdk 22 the
+    // `__constructor` runs exactly once at registration and is not exposed on
+    // the generated client, so a second call is impossible through the public
+    // API. The `has(PLATFORM_ADDRESS_KEY)` guard in the contract remains as
+    // defense-in-depth, but it is unreachable from a test.
 }

@@ -81,7 +81,7 @@ impl CrateMarketplace {
         let sample_id: u32 = storage.get(&TOTAL_SAMPLES_KEY).unwrap_or(0) + 1;
 
         let sample = SampleData {
-            id: sample_id, uploader, title, ipfs_cid,
+            id: sample_id, uploader: uploader.clone(), title, ipfs_cid,
             lease_price, premium_price, exclusive_price,
             genre, bpm, is_exclusive: false, total_sales: 0,
         };
@@ -95,6 +95,15 @@ impl CrateMarketplace {
 
     pub fn purchase_license(env: Env, buyer: Address, sample_id: u32, token_address: Address, tier: LicenseTier) {
         buyer.require_auth();
+
+        // Idempotency guard: reject a repeat purchase before any token moves.
+        // The license key is (buyer, sample_id), so owning any tier for this
+        // sample blocks a second purchase — preventing accidental double-charges
+        // (UI double-submit / retry) and griefing-driven repurchase flows.
+        let license_key = DataKey::License(buyer.clone(), sample_id);
+        if env.storage().persistent().has(&license_key) {
+            panic!("License already owned");
+        }
 
         let mut sample: SampleData = env.storage().persistent()
             .get(&DataKey::Sample(sample_id)).expect("Sample not found");
@@ -113,15 +122,19 @@ impl CrateMarketplace {
         let platform_cut  = price * (platform_fee as i128) / 10_000;
         let producer_cut  = price - platform_cut;
 
+        // Escrow the producer's cut in the contract; the producer claims it
+        // later via withdraw_earnings (which pays out from this balance). The
+        // platform fee is forwarded directly. Paying the producer here instead
+        // would both skip the earnings ledger and double-pay on withdrawal.
         let token = token::Client::new(&env, &token_address);
-        token.transfer(&buyer, &sample.uploader,    &producer_cut);
-        token.transfer(&buyer, &platform_addr,       &platform_cut);
+        token.transfer(&buyer, &env.current_contract_address(), &producer_cut);
+        token.transfer(&buyer, &platform_addr,                  &platform_cut);
 
         let key = DataKey::Earnings(sample.uploader.clone());
         let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         env.storage().persistent().set(&key, &(current + producer_cut));
 
-        env.storage().persistent().set(&DataKey::License(buyer, sample_id), &tier);
+        env.storage().persistent().set(&license_key, &tier);
 
         sample.total_sales += 1;
         if tier == LicenseTier::Exclusive { sample.is_exclusive = true; }
@@ -191,3 +204,6 @@ impl CrateMarketplace {
         env.storage().instance().extend_ttl(17_280, 17_280);
     }
 }
+
+#[cfg(test)]
+mod test;
