@@ -6,6 +6,7 @@ use soroban_sdk::{
 
 const PLATFORM_ADDRESS_KEY: &str = "plat_addr";
 const PLATFORM_FEE_KEY:     &str = "plat_fee";
+const PAYMENT_TOKEN_KEY:    &str = "pay_tok";
 const TOTAL_SAMPLES_KEY:    &str = "tot_samp";
 const TOTAL_VOLUME_KEY:     &str = "tot_vol";
 const TOTAL_PRODUCERS_KEY:  &str = "tot_prod";
@@ -52,7 +53,7 @@ pub struct CrateMarketplace;
 
 #[contractimpl]
 impl CrateMarketplace {
-    pub fn __constructor(env: Env, platform_fee: u32, platform_address: Address) {
+    pub fn __constructor(env: Env, platform_fee: u32, platform_address: Address, payment_token: Address) {
         let storage = env.storage().instance();
         if storage.has(&PLATFORM_ADDRESS_KEY) {
             panic!("Contract already initialized");
@@ -60,6 +61,7 @@ impl CrateMarketplace {
         assert!(platform_fee <= 5000, "Fee must be <= 50%");
         storage.set(&PLATFORM_ADDRESS_KEY, &platform_address);
         storage.set(&PLATFORM_FEE_KEY,     &platform_fee);
+        storage.set(&PAYMENT_TOKEN_KEY,    &payment_token);
         storage.set(&TOTAL_SAMPLES_KEY,    &0u32);
         storage.set(&TOTAL_VOLUME_KEY,     &0i128);
         log!(&env, "Crate marketplace deployed, fee: {}bps", platform_fee);
@@ -107,7 +109,7 @@ impl CrateMarketplace {
         sample_id
     }
 
-    pub fn purchase_license(env: Env, buyer: Address, sample_id: u32, token_address: Address, tier: LicenseTier) {
+    pub fn purchase_license(env: Env, buyer: Address, sample_id: u32, tier: LicenseTier) {
         buyer.require_auth();
 
         // Idempotency guard: reject a repeat purchase before any token moves.
@@ -135,15 +137,20 @@ impl CrateMarketplace {
         let storage      = env.storage().instance();
         let platform_fee: u32     = storage.get(&PLATFORM_FEE_KEY).unwrap_or(1000);
         let platform_addr: Address = storage.get(&PLATFORM_ADDRESS_KEY).unwrap();
+        let payment_token: Address = storage.get(&PAYMENT_TOKEN_KEY).unwrap();
 
         let platform_cut  = price * (platform_fee as i128) / 10_000;
         let producer_cut  = price - platform_cut;
 
+        // The payment token is pinned at construction (see PAYMENT_TOKEN_KEY) rather
+        // than accepted as a caller-supplied argument, so a buyer cannot redirect
+        // payment through a no-op token contract to mint a license for free.
+        //
         // Escrow the producer's cut in the contract; the producer claims it
         // later via withdraw_earnings (which pays out from this balance). The
         // platform fee is forwarded directly. Paying the producer here instead
         // would both skip the earnings ledger and double-pay on withdrawal.
-        let token = token::Client::new(&env, &token_address);
+        let token = token::Client::new(&env, &payment_token);
         token.transfer(&buyer, &env.current_contract_address(), &producer_cut);
         token.transfer(&buyer, &platform_addr,                  &platform_cut);
 
@@ -187,14 +194,15 @@ impl CrateMarketplace {
         earnings
     }
 
-    pub fn withdraw_earnings(env: Env, producer: Address, token_address: Address) -> i128 {
+    pub fn withdraw_earnings(env: Env, producer: Address) -> i128 {
         producer.require_auth();
         let key      = DataKey::Earnings(producer.clone());
         let earnings: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         assert!(earnings > 0, "Nothing to withdraw");
         env.storage().persistent().set(&key, &0i128);
         env.storage().persistent().extend_ttl(&key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
-        let token = token::Client::new(&env, &token_address);
+        let payment_token: Address = env.storage().instance().get(&PAYMENT_TOKEN_KEY).unwrap();
+        let token = token::Client::new(&env, &payment_token);
         token.transfer(&env.current_contract_address(), &producer, &earnings);
         log!(&env, "Withdrawn: {} stroops to {}", earnings, producer);
         earnings
@@ -231,6 +239,12 @@ impl CrateMarketplace {
         env.storage().instance()
             .get(&PLATFORM_FEE_KEY)
             .unwrap_or(0)
+    }
+
+    pub fn get_payment_token(env: Env) -> Address {
+        env.storage().instance()
+            .get(&PAYMENT_TOKEN_KEY)
+            .unwrap()
     }
 
     // Allows anyone (e.g. keepers, the frontend) to extend a sample's on-chain TTL

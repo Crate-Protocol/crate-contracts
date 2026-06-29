@@ -14,13 +14,20 @@ mod tests {
         (contract_address.address(), token_client)
     }
 
+    // Most tests never move tokens, so a freshly generated address is enough
+    // to satisfy the constructor's payment-token parameter.
+    fn dummy_token(env: &Env) -> Address {
+        Address::generate(env)
+    }
+
     #[test]
     fn test_upload_and_get_sample() {
         let env = Env::default();
         env.mock_all_auths();
 
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
 
         let producer = Address::generate(&env);
@@ -56,7 +63,8 @@ mod tests {
         env.mock_all_auths();
 
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
 
         let (total_samples, total_volume, _) = client.get_stats();
@@ -70,7 +78,8 @@ mod tests {
         env.mock_all_auths();
 
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
 
         let producer = Address::generate(&env);
@@ -83,7 +92,8 @@ mod tests {
         env.mock_all_auths();
 
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
 
         let producer = Address::generate(&env);
@@ -122,7 +132,8 @@ mod tests {
         env.mock_all_auths();
 
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
 
         let producer = Address::generate(&env);
@@ -148,7 +159,8 @@ mod tests {
         env.mock_all_auths();
 
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
 
         let producer = Address::generate(&env);
@@ -173,13 +185,13 @@ mod tests {
         env.mock_all_auths();
 
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform)); // 10% fee
+        let buyer = Address::generate(&env);
+        let (xlm_addr, xlm_client) = create_xlm_token(&env, &buyer);
+
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &xlm_addr)); // 10% fee
         let client = CrateMarketplaceClient::new(&env, &contract_id);
 
         let producer = Address::generate(&env);
-        let buyer = Address::generate(&env);
-
-        let (xlm_addr, xlm_client) = create_xlm_token(&env, &buyer);
 
         let sample_id = client.upload_sample(
             &producer,
@@ -192,7 +204,7 @@ mod tests {
             &140u32,
         );
 
-        client.purchase_license(&buyer, &sample_id, &xlm_addr, &LicenseTier::Lease);
+        client.purchase_license(&buyer, &sample_id, &LicenseTier::Lease);
 
         let earnings = client.get_earnings(&producer);
         assert_eq!(earnings, 90_000_000i128);
@@ -211,13 +223,13 @@ mod tests {
         env.mock_all_auths();
 
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let buyer = Address::generate(&env);
+        let (xlm_addr, _xlm_client) = create_xlm_token(&env, &buyer);
+
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &xlm_addr));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
 
         let producer = Address::generate(&env);
-        let buyer = Address::generate(&env);
-
-        let (xlm_addr, _xlm_client) = create_xlm_token(&env, &buyer);
 
         let sample_id = client.upload_sample(
             &producer,
@@ -230,7 +242,7 @@ mod tests {
             &135u32,
         );
 
-        client.purchase_license(&buyer, &sample_id, &xlm_addr, &LicenseTier::Exclusive);
+        client.purchase_license(&buyer, &sample_id, &LicenseTier::Exclusive);
 
         // Sample should now be marked exclusive (unavailable)
         let sample = client.get_sample(&sample_id);
@@ -247,13 +259,13 @@ mod tests {
         env.mock_all_auths();
 
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let buyer = Address::generate(&env);
+        let (xlm_addr, xlm_client) = create_xlm_token(&env, &buyer);
+
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &xlm_addr));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
 
         let producer = Address::generate(&env);
-        let buyer = Address::generate(&env);
-
-        let (_xlm_addr, xlm_client) = create_xlm_token(&env, &buyer);
 
         let sample_id = client.upload_sample(
             &producer,
@@ -266,11 +278,11 @@ mod tests {
             &90u32,
         );
 
-        client.purchase_license(&buyer, &sample_id, &_xlm_addr, &LicenseTier::Lease);
+        client.purchase_license(&buyer, &sample_id, &LicenseTier::Lease);
 
         assert_eq!(client.get_earnings(&producer), 180_000_000i128);
 
-        let withdrawn = client.withdraw_earnings(&producer, &_xlm_addr);
+        let withdrawn = client.withdraw_earnings(&producer);
         assert_eq!(withdrawn, 180_000_000i128);
 
         // Earnings zeroed out after withdrawal
@@ -287,13 +299,13 @@ mod tests {
         env.mock_all_auths();
 
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let buyer = Address::generate(&env);
+        let (xlm_addr, _xlm_client) = create_xlm_token(&env, &buyer);
+
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &xlm_addr));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
 
         let producer = Address::generate(&env);
-        let buyer = Address::generate(&env);
-
-        let (_xlm_addr, _xlm_client) = create_xlm_token(&env, &buyer);
 
         let sample_id = client.upload_sample(
             &producer,
@@ -310,7 +322,7 @@ mod tests {
         assert_eq!(s0, 1u32);
         assert_eq!(v0, 0i128);
 
-        client.purchase_license(&buyer, &sample_id, &_xlm_addr, &LicenseTier::Premium);
+        client.purchase_license(&buyer, &sample_id, &LicenseTier::Premium);
 
         let (s1, v1, _) = client.get_stats();
         assert_eq!(s1, 1u32);
@@ -323,13 +335,13 @@ mod tests {
         env.mock_all_auths();
 
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let buyer = Address::generate(&env);
+        let (xlm_addr, _xlm_client) = create_xlm_token(&env, &buyer);
+
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &xlm_addr));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
 
         let producer = Address::generate(&env);
-        let buyer = Address::generate(&env);
-
-        let (xlm_addr, _xlm_client) = create_xlm_token(&env, &buyer);
 
         let sample_id = client.upload_sample(
             &producer,
@@ -344,7 +356,7 @@ mod tests {
 
         assert_eq!(client.get_license(&buyer, &sample_id), None);
 
-        client.purchase_license(&buyer, &sample_id, &xlm_addr, &LicenseTier::Premium);
+        client.purchase_license(&buyer, &sample_id, &LicenseTier::Premium);
 
         assert_eq!(client.get_license(&buyer, &sample_id), Some(LicenseTier::Premium));
     }
@@ -355,7 +367,8 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
         let producer = Address::generate(&env);
         client.upload_sample(
@@ -376,7 +389,8 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
         let producer = Address::generate(&env);
         let intruder = Address::generate(&env);
@@ -399,12 +413,12 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
-        let client = CrateMarketplaceClient::new(&env, &contract_id);
-        let producer = Address::generate(&env);
         let buyer1 = Address::generate(&env);
         let buyer2 = Address::generate(&env);
         let (xlm_addr, _) = create_xlm_token(&env, &buyer1);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &xlm_addr));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let producer = Address::generate(&env);
         let sample_id = client.upload_sample(
             &producer,
             &String::from_str(&env, "Exclusive"),
@@ -415,8 +429,8 @@ mod tests {
             &String::from_str(&env, "Drill"),
             &120u32,
         );
-        client.purchase_license(&buyer1, &sample_id, &xlm_addr, &LicenseTier::Exclusive);
-        client.purchase_license(&buyer2, &sample_id, &xlm_addr, &LicenseTier::Lease);
+        client.purchase_license(&buyer1, &sample_id, &LicenseTier::Exclusive);
+        client.purchase_license(&buyer2, &sample_id, &LicenseTier::Lease);
     }
 
     #[test]
@@ -425,11 +439,11 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
-        let client = CrateMarketplaceClient::new(&env, &contract_id);
-        let producer = Address::generate(&env);
         let buyer = Address::generate(&env);
         let (xlm_addr, _) = create_xlm_token(&env, &buyer);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &xlm_addr));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        let producer = Address::generate(&env);
         let sample_id = client.upload_sample(
             &producer,
             &String::from_str(&env, "Buy Once"),
@@ -440,9 +454,9 @@ mod tests {
             &String::from_str(&env, "Trap"),
             &140u32,
         );
-        client.purchase_license(&buyer, &sample_id, &xlm_addr, &LicenseTier::Lease);
+        client.purchase_license(&buyer, &sample_id, &LicenseTier::Lease);
         // Second purchase by the same buyer for the same sample must be rejected.
-        client.purchase_license(&buyer, &sample_id, &xlm_addr, &LicenseTier::Premium);
+        client.purchase_license(&buyer, &sample_id, &LicenseTier::Premium);
     }
 
     #[test]
@@ -451,7 +465,8 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
         let producer = Address::generate(&env);
         client.upload_sample(
@@ -472,11 +487,11 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
-        let client = CrateMarketplaceClient::new(&env, &contract_id);
         let producer = Address::generate(&env);
         let (xlm_addr, _) = create_xlm_token(&env, &producer);
-        client.withdraw_earnings(&producer, &xlm_addr);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &xlm_addr));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        client.withdraw_earnings(&producer);
     }
 
     #[test]
@@ -484,9 +499,21 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&750u32, &platform));
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&750u32, &platform, &token));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
         assert_eq!(client.get_platform_fee(), 750u32);
+    }
+
+    #[test]
+    fn test_get_payment_token() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let platform = Address::generate(&env);
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+        assert_eq!(client.get_payment_token(), token);
     }
 
     #[test]
@@ -495,7 +522,8 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
         let producer = Address::generate(&env);
         client.upload_sample(
@@ -515,7 +543,8 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
         client.bump_instance();
     }
@@ -525,7 +554,8 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
         let buyer = Address::generate(&env);
         assert_eq!(client.get_license(&buyer, &999u32), None);
@@ -537,7 +567,8 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let platform = Address::generate(&env);
-        env.register(CrateMarketplace, (&6000u32, &platform));
+        let token = dummy_token(&env);
+        env.register(CrateMarketplace, (&6000u32, &platform, &token));
     }
 
     #[test]
@@ -545,7 +576,8 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
         let producer = Address::generate(&env);
         let sample_id = client.upload_sample(
@@ -570,7 +602,8 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
         client.bump_sample(&999u32);
     }
@@ -581,7 +614,8 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
         let producer = Address::generate(&env);
         client.upload_sample(
