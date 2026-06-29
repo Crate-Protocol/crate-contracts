@@ -44,6 +44,7 @@ pub enum DataKey {
     Sample(u32),
     Earnings(Address),
     License(Address, u32),
+    Producer(Address),
 }
 
 #[contract]
@@ -95,8 +96,13 @@ impl CrateMarketplace {
         env.storage().persistent().extend_ttl(&sample_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
 
         storage.set(&TOTAL_SAMPLES_KEY, &sample_id);
-        let producers: u32 = storage.get(&TOTAL_PRODUCERS_KEY).unwrap_or(0);
-        storage.set(&TOTAL_PRODUCERS_KEY, &(producers + 1));
+        let producer_key = DataKey::Producer(uploader.clone());
+        if !env.storage().persistent().has(&producer_key) {
+            env.storage().persistent().set(&producer_key, &true);
+            env.storage().persistent().extend_ttl(&producer_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
+            let producers: u32 = storage.get(&TOTAL_PRODUCERS_KEY).unwrap_or(0);
+            storage.set(&TOTAL_PRODUCERS_KEY, &(producers + 1));
+        }
         env.events().publish((symbol_short!("uploaded"), sample_id), sample.uploader.clone());
         sample_id
     }
