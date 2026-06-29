@@ -631,46 +631,51 @@ mod tests {
     }
 
     #[test]
-    fn test_purchase_only_moves_the_pinned_payment_token() {
+    fn test_producer_count_is_unique_per_address() {
         let env = Env::default();
         env.mock_all_auths();
+
         let platform = Address::generate(&env);
-        let buyer = Address::generate(&env);
-
-        // Buyer holds funds in two independent token contracts. The contract
-        // is pinned to `accepted_token` at construction; `decoy_token` stands
-        // in for an attacker-deployed no-op token. Since purchase_license no
-        // longer accepts a caller-supplied token address (see issue #8), there
-        // is no parameter through which the buyer could redirect payment to
-        // the decoy — this test confirms the decoy is never touched.
-        let (accepted_token, accepted_client) = create_xlm_token(&env, &buyer);
-        let (_decoy_token, decoy_client) = create_xlm_token(&env, &buyer);
-
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &accepted_token));
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
-        assert_eq!(client.get_payment_token(), accepted_token);
 
-        let producer = Address::generate(&env);
-        let sample_id = client.upload_sample(
-            &producer,
-            &String::from_str(&env, "Pinned Token Test"),
-            &String::from_str(&env, "QmPinnedCID"),
-            &100_000_000i128,
-            &500_000_000i128,
-            &2_000_000_000i128,
+        let producer_a = Address::generate(&env);
+        let producer_b = Address::generate(&env);
+
+        // producer_a uploads 3 samples — should only count as 1 unique producer
+        for i in 1u32..=3 {
+            let title = String::from_str(&env, if i == 1 { "Beat A1" } else if i == 2 { "Beat A2" } else { "Beat A3" });
+            client.upload_sample(
+                &producer_a,
+                &title,
+                &String::from_str(&env, "QmCIDa"),
+                &100_000_000i128,
+                &500_000_000i128,
+                &2_000_000_000i128,
+                &String::from_str(&env, "Hip-Hop"),
+                &90u32,
+            );
+        }
+
+        let (samples, _, producers) = client.get_stats();
+        assert_eq!(samples, 3u32, "3 samples uploaded");
+        assert_eq!(producers, 1u32, "only 1 unique producer after 3 uploads by same address");
+
+        // producer_b uploads 1 sample — producer count should become 2
+        client.upload_sample(
+            &producer_b,
+            &String::from_str(&env, "Beat B1"),
+            &String::from_str(&env, "QmCIDb"),
+            &200_000_000i128,
+            &800_000_000i128,
+            &3_000_000_000i128,
             &String::from_str(&env, "Trap"),
             &140u32,
         );
 
-        client.purchase_license(&buyer, &sample_id, &LicenseTier::Lease);
-
-        // Payment was settled in the accepted token...
-        assert_eq!(accepted_client.balance(&buyer), 9_900_000_000i128);
-        assert_eq!(accepted_client.balance(&platform), 10_000_000i128);
-        // ...and the decoy token, which a malicious buyer would prefer to pay
-        // with, was never invoked at all.
-        assert_eq!(decoy_client.balance(&buyer), 10_000_000_000i128);
-        assert_eq!(decoy_client.balance(&platform), 0i128);
+        let (samples2, _, producers2) = client.get_stats();
+        assert_eq!(samples2, 4u32, "4 total samples");
+        assert_eq!(producers2, 2u32, "2 unique producers");
     }
 
     // Note: there is no `test_double_init_panics`. Under soroban-sdk 22 the
