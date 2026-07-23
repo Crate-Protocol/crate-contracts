@@ -631,6 +631,74 @@ mod tests {
     }
 
     #[test]
+    fn test_list_resale_and_buy_resale() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let platform = Address::generate(&env);
+        let buyer = Address::generate(&env);
+        let buyer2 = Address::generate(&env);
+        let (xlm_addr, xlm_client) = create_xlm_token(&env, &platform);
+        
+        // Mint to buyer and buyer2
+        let token_admin = token::StellarAssetClient::new(&env, &xlm_addr);
+        token_admin.mint(&buyer, &10_000_000_000i128);
+        token_admin.mint(&buyer2, &10_000_000_000i128);
+
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &xlm_addr));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+
+        let producer = Address::generate(&env);
+
+        let sample_id = client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Resale Test"),
+            &String::from_str(&env, "QmResale"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Trap"),
+            &140u32,
+        );
+
+        // Buyer buys exclusive
+        client.purchase_license(&buyer, &sample_id, &LicenseTier::Exclusive);
+        
+        let sample_after_buy = client.get_sample(&sample_id);
+        assert!(sample_after_buy.is_exclusive);
+        assert_eq!(sample_after_buy.owner, buyer);
+
+        // Buyer lists for resale
+        client.list_resale(&buyer, &sample_id, &3_000_000_000i128);
+        
+        let sample_after_list = client.get_sample(&sample_id);
+        assert_eq!(sample_after_list.resale_price, Some(3_000_000_000i128));
+
+        // Buyer2 buys resale
+        client.buy_resale(&buyer2, &sample_id);
+        
+        let sample_after_resale = client.get_sample(&sample_id);
+        assert_eq!(sample_after_resale.owner, buyer2);
+        assert_eq!(sample_after_resale.resale_price, None);
+        assert_eq!(sample_after_resale.total_sales, 2u32);
+
+        // Check splits
+        // Price was 3B. Platform gets 10% (300M). Producer gets 10% (300M). Owner gets 80% (2.4B).
+        let platform_balance = xlm_client.balance(&platform);
+        // Platform gets 200M from original 2B purchase, plus 300M from resale = 500M
+        assert_eq!(platform_balance, 500_000_000i128);
+
+        // Producer gets 1.8B from original purchase, plus 300M from resale = 2.1B pending
+        let earnings = client.get_earnings(&producer);
+        assert_eq!(earnings, 2_100_000_000i128);
+
+        // Buyer gets 2.4B back into wallet
+        // Started with 10B, spent 2B, gained 2.4B = 10.4B
+        let buyer_balance = xlm_client.balance(&buyer);
+        assert_eq!(buyer_balance, 10_400_000_000i128);
+    }
+
+    #[test]
     fn test_producer_count_is_unique_per_address() {
         let env = Env::default();
         env.mock_all_auths();
