@@ -21,6 +21,7 @@ const PERSISTENT_MIN_TTL: u32 = 17_280; // ~1 day
 pub struct SampleData {
     pub id:              u32,
     pub uploader:        Address,
+    pub owner:           Address,
     pub title:           String,
     pub ipfs_cid:        String,
     pub lease_price:     i128,
@@ -29,6 +30,7 @@ pub struct SampleData {
     pub genre:           String,
     pub bpm:             u32,
     pub is_exclusive:    bool,
+    pub resale_price:    Option<i128>,
     pub total_sales:     u32,
 }
 
@@ -89,9 +91,9 @@ impl CrateMarketplace {
         let sample_id: u32 = storage.get(&TOTAL_SAMPLES_KEY).unwrap_or(0) + 1;
 
         let sample = SampleData {
-            id: sample_id, uploader: uploader.clone(), title, ipfs_cid,
+            id: sample_id, uploader: uploader.clone(), owner: uploader.clone(), title, ipfs_cid,
             lease_price, premium_price, exclusive_price,
-            genre, bpm, is_exclusive: false, total_sales: 0,
+            genre, bpm, is_exclusive: false, resale_price: None, total_sales: 0,
         };
         let sample_key = DataKey::Sample(sample_id);
         env.storage().persistent().set(&sample_key, &sample);
@@ -163,7 +165,10 @@ impl CrateMarketplace {
         env.storage().persistent().extend_ttl(&license_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
 
         sample.total_sales += 1;
-        if tier == LicenseTier::Exclusive { sample.is_exclusive = true; }
+        if tier == LicenseTier::Exclusive { 
+            sample.is_exclusive = true; 
+            sample.owner = buyer.clone();
+        }
         env.storage().persistent().set(&sample_key, &sample);
         env.storage().persistent().extend_ttl(&sample_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
 
@@ -215,6 +220,71 @@ impl CrateMarketplace {
             env.storage().persistent().extend_ttl(&key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
         }
         result
+    }
+
+    pub fn list_resale(env: Env, owner: Address, sample_id: u32, price: i128) {
+        owner.require_auth();
+        assert!(price > 0, "Price must be positive");
+        let key = DataKey::Sample(sample_id);
+        let mut sample: SampleData = env.storage().persistent().get(&key).expect("Sample not found");
+        assert!(sample.is_exclusive, "Only exclusive samples can be resold");
+        assert!(sample.owner == owner, "Not the owner");
+        sample.resale_price = Some(price);
+        env.storage().persistent().set(&key, &sample);
+        env.storage().persistent().extend_ttl(&key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
+        log!(&env, "Sample {} listed for resale at {} by {}", sample_id, price, owner);
+    }
+
+    pub fn buy_resale(env: Env, buyer: Address, sample_id: u32) {
+        buyer.require_auth();
+        let license_key = DataKey::License(buyer.clone(), sample_id);
+        if env.storage().persistent().has(&license_key) {
+            panic!("License already owned");
+        }
+
+        let key = DataKey::Sample(sample_id);
+        let mut sample: SampleData = env.storage().persistent().get(&key).expect("Sample not found");
+        assert!(sample.is_exclusive, "Sample not exclusive");
+        let price = sample.resale_price.expect("Sample not listed for resale");
+        
+        let storage = env.storage().instance();
+        let platform_fee: u32 = storage.get(&PLATFORM_FEE_KEY).unwrap_or(1000);
+        let platform_addr: Address = storage.get(&PLATFORM_ADDRESS_KEY).unwrap();
+        let payment_token: Address = storage.get(&PAYMENT_TOKEN_KEY).unwrap();
+
+        let platform_cut = price * (platform_fee as i128) / 10_000;
+        let producer_cut = price * 1000 / 10_000; // 10% royalty
+        let owner_cut = price - platform_cut - producer_cut;
+
+        let token = token::Client::new(&env, &payment_token);
+        token.transfer(&buyer, &platform_addr, &platform_cut);
+        token.transfer(&buyer, &env.current_contract_address(), &producer_cut);
+        token.transfer(&buyer, &sample.owner, &owner_cut);
+
+        let earnings_key = DataKey::Earnings(sample.uploader.clone());
+        let current: i128 = env.storage().persistent().get(&earnings_key).unwrap_or(0);
+        env.storage().persistent().set(&earnings_key, &(current + producer_cut));
+        env.storage().persistent().extend_ttl(&earnings_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
+
+        let old_license_key = DataKey::License(sample.owner.clone(), sample_id);
+        env.storage().persistent().remove(&old_license_key);
+        env.storage().persistent().set(&license_key, &LicenseTier::Exclusive);
+        env.storage().persistent().extend_ttl(&license_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
+
+        // Ownership transfers
+        let new_owner = buyer.clone();
+        sample.owner = new_owner.clone();
+        sample.resale_price = None;
+        sample.total_sales += 1;
+        
+        env.storage().persistent().set(&key, &sample);
+        env.storage().persistent().extend_ttl(&key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
+
+        let total_vol: i128 = storage.get(&TOTAL_VOLUME_KEY).unwrap_or(0);
+        storage.set(&TOTAL_VOLUME_KEY, &(total_vol + price));
+
+        env.events().publish((symbol_short!("resold"), sample_id), (buyer, price));
+        log!(&env, "Sample {} resold to {} for {}", sample_id, new_owner, price);
     }
 
     pub fn delist_sample(env: Env, uploader: Address, sample_id: u32) {
