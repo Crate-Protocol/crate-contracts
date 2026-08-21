@@ -95,6 +95,17 @@ impl CrateMarketplace {
         assert!(bpm >= 40 && bpm <= 300, "BPM must be 40-300");
         assert!(lease_price > 0 && premium_price > 0 && exclusive_price > 0, "All prices must be positive");
         assert!(lease_price < premium_price && premium_price < exclusive_price, "Prices must be lease < premium < exclusive");
+        assert!(collaborators.len() <= 3, "Max 3 collaborators allowed");
+
+        let mut collab_total: u32 = 0;
+        for c in collaborators.iter() {
+            assert!(c.share_bps > 0, "Collaborator share must be positive");
+            assert!(c.share_bps < 10_000, "Collaborator share must be less than 100%");
+            assert!(c.address != uploader, "Collaborator cannot be the uploader");
+            collab_total = collab_total.checked_add(c.share_bps)
+                .expect("Collaborator shares overflow");
+        }
+        assert!(collab_total <= 10_000, "Collaborator shares must sum to <= 100%");
 
         let storage    = env.storage().instance();
         let sample_id: u32 = storage.get(&TOTAL_SAMPLES_KEY).unwrap_or(0) + 1;
