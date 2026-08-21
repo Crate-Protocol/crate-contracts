@@ -772,4 +772,320 @@ mod tests {
     // the generated client, so a second call is impossible through the public
     // API. The `has(PLATFORM_ADDRESS_KEY)` guard in the contract remains as
     // defense-in-depth, but it is unreachable from a test.
+
+    // ── Collaborator revenue-split tests ──────────────────────────────────
+
+    #[test]
+    fn test_upload_with_collaborators() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let platform = Address::generate(&env);
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+
+        let producer = Address::generate(&env);
+        let collab_a = Address::generate(&env);
+        let collab_b = Address::generate(&env);
+
+        let collaborators = Vec::from_array(&env, [
+            Collaborator { address: collab_a.clone(), share_bps: 3000 },
+            Collaborator { address: collab_b.clone(), share_bps: 2000 },
+        ]);
+
+        let sample_id = client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Collab Beat"),
+            &String::from_str(&env, "QmCollabCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Hip-Hop"),
+            &90u32,
+            &collaborators,
+        );
+
+        let stored = client.get_collaborators(&sample_id);
+        assert_eq!(stored.len(), 2u32);
+        assert_eq!(stored.get_unchecked(0).address, collab_a);
+        assert_eq!(stored.get_unchecked(0).share_bps, 3000u32);
+        assert_eq!(stored.get_unchecked(1).address, collab_b);
+        assert_eq!(stored.get_unchecked(1).share_bps, 2000u32);
+    }
+
+    #[test]
+    fn test_collaborator_split_on_purchase() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let platform = Address::generate(&env);
+        let (token_addr, _xlm_client) = create_xlm_token(&env, &platform);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token_addr));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+
+        let producer = Address::generate(&env);
+        let collab_a = Address::generate(&env);
+        let collab_b = Address::generate(&env);
+        let buyer = Address::generate(&env);
+
+        // Mint tokens to buyer
+        let token_admin = token::StellarAssetClient::new(&env, &token_addr);
+        token_admin.mint(&buyer, &10_000_000_000i128);
+
+        let collaborators = Vec::from_array(&env, [
+            Collaborator { address: collab_a.clone(), share_bps: 3000 },
+            Collaborator { address: collab_b.clone(), share_bps: 2000 },
+        ]);
+
+        let sample_id = client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Split Beat"),
+            &String::from_str(&env, "QmSplitCID"),
+            &100_000_000i128, // 10 XLM lease
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Trap"),
+            &140u32,
+            &collaborators,
+        );
+
+        // Purchase lease: 100_000_000 stroops
+        // Platform cut (10%): 10_000_000
+        // Producer cut: 90_000_000
+        // Collab A (30%): 27_000_000
+        // Collab B (20%): 18_000_000
+        // Producer remainder: 45_000_000
+        client.purchase_license(&buyer, &sample_id, &LicenseTier::Lease);
+
+        assert_eq!(client.get_earnings(&collab_a), 27_000_000i128);
+        assert_eq!(client.get_earnings(&collab_b), 18_000_000i128);
+        assert_eq!(client.get_earnings(&producer), 45_000_000i128);
+    }
+
+    #[test]
+    fn test_collaborators_can_withdraw_independently() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let platform = Address::generate(&env);
+        let (token_addr, _xlm_client) = create_xlm_token(&env, &platform);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token_addr));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+
+        let producer = Address::generate(&env);
+        let collab = Address::generate(&env);
+        let buyer = Address::generate(&env);
+
+        let token_admin = token::StellarAssetClient::new(&env, &token_addr);
+        token_admin.mint(&buyer, &10_000_000_000i128);
+
+        let collaborators = Vec::from_array(&env, [
+            Collaborator { address: collab.clone(), share_bps: 5000 },
+        ]);
+
+        let sample_id = client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Withdraw Collab"),
+            &String::from_str(&env, "QmWdCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "R&B"),
+            &80u32,
+            &collaborators,
+        );
+
+        client.purchase_license(&buyer, &sample_id, &LicenseTier::Lease);
+
+        // Collab gets 50% of 90M = 45M
+        assert_eq!(client.get_earnings(&collab), 45_000_000i128);
+        let withdrawn = client.withdraw_earnings(&collab);
+        assert_eq!(withdrawn, 45_000_000i128);
+        assert_eq!(client.get_earnings(&collab), 0i128);
+
+        // Producer gets remainder
+        assert_eq!(client.get_earnings(&producer), 45_000_000i128);
+    }
+
+    #[test]
+    fn test_collaborator_split_on_resale() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let platform = Address::generate(&env);
+        let (token_addr, _xlm_client) = create_xlm_token(&env, &platform);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token_addr));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+
+        let producer = Address::generate(&env);
+        let collab = Address::generate(&env);
+        let buyer = Address::generate(&env);
+        let resale_buyer = Address::generate(&env);
+
+        let token_admin = token::StellarAssetClient::new(&env, &token_addr);
+        token_admin.mint(&buyer, &10_000_000_000i128);
+        token_admin.mint(&resale_buyer, &10_000_000_000i128);
+
+        let collaborators = Vec::from_array(&env, [
+            Collaborator { address: collab.clone(), share_bps: 4000 },
+        ]);
+
+        let sample_id = client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Resale Collab"),
+            &String::from_str(&env, "QmResCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &5_000_000_000i128,
+            &String::from_str(&env, "Drill"),
+            &135u32,
+            &collaborators,
+        );
+
+        // Buyer purchases exclusive to enable resale
+        client.purchase_license(&buyer, &sample_id, &LicenseTier::Exclusive);
+
+        // List for resale at 1_000_000_000 (100 XLM)
+        client.list_resale(&buyer, &sample_id, &1_000_000_000i128);
+
+        // Resale splits:
+        // Platform (10%): 100_000_000
+        // Producer royalty (10%): 100_000_000
+        //   Collab (40% of royalty): 40_000_000
+        //   Producer (remainder): 60_000_000
+        // Owner gets: 800_000_000
+        client.buy_resale(&resale_buyer, &sample_id);
+
+        // Collab total: exclusive purchase (1_800_000_000) + resale royalty (40_000_000)
+        assert_eq!(client.get_earnings(&collab), 1_840_000_000i128);
+        // Producer total: exclusive purchase (2_700_000_000) + resale royalty (60_000_000)
+        assert_eq!(client.get_earnings(&producer), 2_760_000_000i128);
+    }
+
+    #[test]
+    #[should_panic(expected = "Max 3 collaborators allowed")]
+    fn test_upload_too_many_collaborators_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let platform = Address::generate(&env);
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+
+        let producer = Address::generate(&env);
+        let collaborators = Vec::from_array(&env, [
+            Collaborator { address: Address::generate(&env), share_bps: 1000 },
+            Collaborator { address: Address::generate(&env), share_bps: 1000 },
+            Collaborator { address: Address::generate(&env), share_bps: 1000 },
+            Collaborator { address: Address::generate(&env), share_bps: 1000 },
+        ]);
+
+        client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Too Many"),
+            &String::from_str(&env, "QmTooMany"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Pop"),
+            &120u32,
+            &collaborators,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Collaborator shares must sum to <= 100%")]
+    fn test_collaborator_shares_exceed_100_percent_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let platform = Address::generate(&env);
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+
+        let producer = Address::generate(&env);
+        let collaborators = Vec::from_array(&env, [
+            Collaborator { address: Address::generate(&env), share_bps: 6000 },
+            Collaborator { address: Address::generate(&env), share_bps: 5000 },
+        ]);
+
+        client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Over Shares"),
+            &String::from_str(&env, "QmOverCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Jazz"),
+            &110u32,
+            &collaborators,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Collaborator cannot be the uploader")]
+    fn test_collaborator_cannot_be_uploader_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let platform = Address::generate(&env);
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+
+        let producer = Address::generate(&env);
+        let collaborators = Vec::from_array(&env, [
+            Collaborator { address: producer.clone(), share_bps: 5000 },
+        ]);
+
+        client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Self Collab"),
+            &String::from_str(&env, "QmSelfCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Funk"),
+            &100u32,
+            &collaborators,
+        );
+    }
+
+    #[test]
+    fn test_upload_without_collaborators_gives_producer_full_share() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let platform = Address::generate(&env);
+        let (token_addr, _xlm_client) = create_xlm_token(&env, &platform);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token_addr));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+
+        let producer = Address::generate(&env);
+        let buyer = Address::generate(&env);
+
+        let token_admin = token::StellarAssetClient::new(&env, &token_addr);
+        token_admin.mint(&buyer, &10_000_000_000i128);
+
+        let sample_id = client.upload_sample(
+            &producer,
+            &String::from_str(&env, "No Collab"),
+            &String::from_str(&env, "QmNoCollabCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Lo-Fi"),
+            &95u32,
+            &Vec::new(&env),
+        );
+
+        client.purchase_license(&buyer, &sample_id, &LicenseTier::Lease);
+
+        // Without collaborators, producer gets the full 90% cut
+        assert_eq!(client.get_earnings(&producer), 90_000_000i128);
+        assert_eq!(client.get_collaborators(&sample_id).len(), 0u32);
+    }
 }
