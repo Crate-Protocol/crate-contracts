@@ -11,6 +11,9 @@ const TOTAL_SAMPLES_KEY:    &str = "tot_samp";
 const TOTAL_VOLUME_KEY:     &str = "tot_vol";
 const TOTAL_PRODUCERS_KEY:  &str = "tot_prod";
 
+const MAX_COLLABORATORS: u32 = 3;
+const BPS_DENOMINATOR: u32 = 10_000;
+
 // ~1 year of ledgers at 5 s/ledger; entries are bumped to this TTL on every access.
 const PERSISTENT_BUMP_AMOUNT: u32 = 535_680;
 // If the remaining TTL is still above this threshold the bump is a no-op (saves fees).
@@ -95,17 +98,17 @@ impl CrateMarketplace {
         assert!(bpm >= 40 && bpm <= 300, "BPM must be 40-300");
         assert!(lease_price > 0 && premium_price > 0 && exclusive_price > 0, "All prices must be positive");
         assert!(lease_price < premium_price && premium_price < exclusive_price, "Prices must be lease < premium < exclusive");
-        assert!(collaborators.len() <= 3, "Max 3 collaborators allowed");
+        assert!(collaborators.len() <= MAX_COLLABORATORS, "Max 3 collaborators allowed");
 
         let mut collab_total: u32 = 0;
         for c in collaborators.iter() {
             assert!(c.share_bps > 0, "Collaborator share must be positive");
-            assert!(c.share_bps < 10_000, "Collaborator share must be less than 100%");
+            assert!(c.share_bps < BPS_DENOMINATOR, "Collaborator share must be less than 100%");
             assert!(c.address != uploader, "Collaborator cannot be the uploader");
             collab_total = collab_total.checked_add(c.share_bps)
                 .expect("Collaborator shares overflow");
         }
-        assert!(collab_total <= 10_000, "Collaborator shares must sum to <= 100%");
+        assert!(collab_total <= BPS_DENOMINATOR, "Collaborator shares must sum to <= 100%");
 
         let storage    = env.storage().instance();
         let sample_id: u32 = storage.get(&TOTAL_SAMPLES_KEY).unwrap_or(0) + 1;
@@ -192,7 +195,7 @@ impl CrateMarketplace {
 
         let mut distributed: i128 = 0;
         for c in collaborators.iter() {
-            let share = producer_cut * (c.share_bps as i128) / 10_000;
+            let share = producer_cut * (c.share_bps as i128) / BPS_DENOMINATOR as i128;
             if share > 0 {
                 let earnings_key = DataKey::Earnings(c.address.clone());
                 let current: i128 = env.storage().persistent().get(&earnings_key).unwrap_or(0);
@@ -316,7 +319,7 @@ impl CrateMarketplace {
 
         let mut distributed: i128 = 0;
         for c in collaborators.iter() {
-            let share = producer_cut * (c.share_bps as i128) / 10_000;
+            let share = producer_cut * (c.share_bps as i128) / BPS_DENOMINATOR as i128;
             if share > 0 {
                 let earnings_key = DataKey::Earnings(c.address.clone());
                 let current: i128 = env.storage().persistent().get(&earnings_key).unwrap_or(0);
