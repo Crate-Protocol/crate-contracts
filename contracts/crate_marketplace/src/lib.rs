@@ -382,6 +382,17 @@ impl CrateMarketplace {
             .unwrap()
     }
 
+    pub fn get_collaborators(env: Env, sample_id: u32) -> Vec<Collaborator> {
+        let key = DataKey::Collaborators(sample_id);
+        let collaborators: Vec<Collaborator> = env.storage().persistent()
+            .get(&key)
+            .unwrap_or(Vec::new(&env));
+        if collaborators.len() > 0 {
+            env.storage().persistent().extend_ttl(&key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
+        }
+        collaborators
+    }
+
     // Allows anyone (e.g. keepers, the frontend) to extend a sample's on-chain TTL
     // without triggering a purchase. Useful for active listings approaching expiry.
     pub fn bump_sample(env: Env, sample_id: u32) {
