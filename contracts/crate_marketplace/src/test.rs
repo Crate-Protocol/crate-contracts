@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use crate::{CrateMarketplace, CrateMarketplaceClient, LicenseTier};
+    use crate::{Collaborator, CrateMarketplace, CrateMarketplaceClient, LicenseTier};
     use soroban_sdk::{
         testutils::Address as _,
-        token, Address, Env, String,
+        token, Address, Env, String, Vec,
     };
 
     fn create_xlm_token<'a>(env: &'a Env, admin: &Address) -> (Address, token::Client<'a>) {
@@ -44,6 +44,7 @@ mod tests {
             &2_000_000_000i128,
             &genre,
             &95u32,
+            &Vec::new(&env),
         );
         assert_eq!(sample_id, 1u32);
 
@@ -107,6 +108,7 @@ mod tests {
             &1_000_000_000i128,
             &String::from_str(&env, "Hip-Hop"),
             &90u32,
+            &Vec::new(&env),
         );
         let id2 = client.upload_sample(
             &producer,
@@ -117,6 +119,7 @@ mod tests {
             &3_000_000_000i128,
             &String::from_str(&env, "Trap"),
             &140u32,
+            &Vec::new(&env),
         );
 
         assert_eq!(id1, 1u32);
@@ -146,6 +149,7 @@ mod tests {
             &2_000_000_000i128,
             &String::from_str(&env, "R&B"),
             &80u32,
+            &Vec::new(&env),
         );
 
         client.delist_sample(&producer, &sample_id);
@@ -173,6 +177,7 @@ mod tests {
             &2_000_000_000i128,
             &String::from_str(&env, "R&B"),
             &80u32,
+            &Vec::new(&env),
         );
 
         client.delist_sample(&producer, &sample_id);
@@ -202,6 +207,7 @@ mod tests {
             &2_000_000_000i128,
             &String::from_str(&env, "Trap"),
             &140u32,
+            &Vec::new(&env),
         );
 
         client.purchase_license(&buyer, &sample_id, &LicenseTier::Lease);
@@ -240,6 +246,7 @@ mod tests {
             &5_000_000_000i128,
             &String::from_str(&env, "Drill"),
             &135u32,
+            &Vec::new(&env),
         );
 
         client.purchase_license(&buyer, &sample_id, &LicenseTier::Exclusive);
@@ -276,6 +283,7 @@ mod tests {
             &4_000_000_000i128,
             &String::from_str(&env, "Hip-Hop"),
             &90u32,
+            &Vec::new(&env),
         );
 
         client.purchase_license(&buyer, &sample_id, &LicenseTier::Lease);
@@ -316,6 +324,7 @@ mod tests {
             &2_000_000_000i128,
             &String::from_str(&env, "Afrobeats"),
             &95u32,
+            &Vec::new(&env),
         );
 
         let (s0, v0, _) = client.get_stats();
@@ -352,6 +361,7 @@ mod tests {
             &2_000_000_000i128,
             &String::from_str(&env, "R&B"),
             &80u32,
+            &Vec::new(&env),
         );
 
         assert_eq!(client.get_license(&buyer, &sample_id), None);
@@ -380,6 +390,7 @@ mod tests {
             &2_000_000_000i128,
             &String::from_str(&env, "Trap"),
             &350u32,
+            &Vec::new(&env),
         );
     }
 
@@ -403,6 +414,7 @@ mod tests {
             &2_000_000_000i128,
             &String::from_str(&env, "R&B"),
             &80u32,
+            &Vec::new(&env),
         );
         client.delist_sample(&intruder, &sample_id);
     }
@@ -428,6 +440,7 @@ mod tests {
             &2_000_000_000i128,
             &String::from_str(&env, "Drill"),
             &120u32,
+            &Vec::new(&env),
         );
         client.purchase_license(&buyer1, &sample_id, &LicenseTier::Exclusive);
         client.purchase_license(&buyer2, &sample_id, &LicenseTier::Lease);
@@ -453,6 +466,7 @@ mod tests {
             &2_000_000_000i128,
             &String::from_str(&env, "Trap"),
             &140u32,
+            &Vec::new(&env),
         );
         client.purchase_license(&buyer, &sample_id, &LicenseTier::Lease);
         // Second purchase by the same buyer for the same sample must be rejected.
@@ -478,6 +492,7 @@ mod tests {
             &2_000_000_000i128,
             &String::from_str(&env, "Trap"),
             &140u32,
+            &Vec::new(&env),
         );
     }
 
@@ -535,6 +550,7 @@ mod tests {
             &2_000_000_000i128,
             &String::from_str(&env, "Trap"),
             &140u32,
+            &Vec::new(&env),
         );
     }
 
@@ -589,6 +605,7 @@ mod tests {
             &2_000_000_000i128,
             &String::from_str(&env, "Trap"),
             &140u32,
+            &Vec::new(&env),
         );
         // Must not panic and sample must still be readable afterwards.
         client.bump_sample(&sample_id);
@@ -627,6 +644,7 @@ mod tests {
             &2_000_000_000i128,
             &String::from_str(&env, "Trap"),
             &140u32,
+            &Vec::new(&env),
         );
     }
 
@@ -659,6 +677,7 @@ mod tests {
             &2_000_000_000i128,
             &String::from_str(&env, "Trap"),
             &140u32,
+            &Vec::new(&env),
         );
 
         // Buyer buys exclusive
@@ -722,6 +741,7 @@ mod tests {
                 &2_000_000_000i128,
                 &String::from_str(&env, "Hip-Hop"),
                 &90u32,
+            &Vec::new(&env),
             );
         }
 
@@ -739,6 +759,7 @@ mod tests {
             &3_000_000_000i128,
             &String::from_str(&env, "Trap"),
             &140u32,
+            &Vec::new(&env),
         );
 
         let (samples2, _, producers2) = client.get_stats();
