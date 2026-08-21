@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short,
-    Address, Env, String, log, token,
+    Address, Env, String, Vec, log, token,
 };
 
 const PLATFORM_ADDRESS_KEY: &str = "plat_addr";
