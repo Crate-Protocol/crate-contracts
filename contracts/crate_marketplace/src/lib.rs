@@ -120,6 +120,14 @@ impl CrateMarketplace {
         env.storage().persistent().extend_ttl(&sample_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
 
         storage.set(&TOTAL_SAMPLES_KEY, &sample_id);
+
+        // Store collaborators if any
+        if collaborators.len() > 0 {
+            let collab_key = DataKey::Collaborators(sample_id);
+            env.storage().persistent().set(&collab_key, &collaborators);
+            env.storage().persistent().extend_ttl(&collab_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
+        }
+
         let producer_key = DataKey::Producer(uploader.clone());
         if !env.storage().persistent().has(&producer_key) {
             env.storage().persistent().set(&producer_key, &true);
