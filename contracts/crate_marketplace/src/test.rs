@@ -1088,4 +1088,60 @@ mod tests {
         assert_eq!(client.get_earnings(&producer), 90_000_000i128);
         assert_eq!(client.get_collaborators(&sample_id).len(), 0u32);
     }
+
+    #[test]
+    fn test_get_collaborators_empty_for_sample_without_collabs() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let platform = Address::generate(&env);
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+
+        let producer = Address::generate(&env);
+        let sample_id = client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Solo Beat"),
+            &String::from_str(&env, "QmSoloCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Lo-Fi"),
+            &95u32,
+            &Vec::new(&env),
+        );
+
+        let collabs = client.get_collaborators(&sample_id);
+        assert_eq!(collabs.len(), 0u32);
+    }
+
+    #[test]
+    #[should_panic(expected = "Collaborator share must be positive")]
+    fn test_zero_share_collaborator_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let platform = Address::generate(&env);
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
+        let client = CrateMarketplaceClient::new(&env, &contract_id);
+
+        let producer = Address::generate(&env);
+        let collaborators = Vec::from_array(&env, [
+            Collaborator { address: Address::generate(&env), share_bps: 0 },
+        ]);
+
+        client.upload_sample(
+            &producer,
+            &String::from_str(&env, "Zero Share"),
+            &String::from_str(&env, "QmZeroCID"),
+            &100_000_000i128,
+            &500_000_000i128,
+            &2_000_000_000i128,
+            &String::from_str(&env, "Jazz"),
+            &110u32,
+            &collaborators,
+        );
+    }
 }
