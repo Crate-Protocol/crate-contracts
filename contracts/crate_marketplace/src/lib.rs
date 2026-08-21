@@ -43,11 +43,19 @@ pub enum LicenseTier {
 }
 
 #[contracttype]
+#[derive(Clone, Debug)]
+pub struct Collaborator {
+    pub address: Address,
+    pub share_bps: u32,
+}
+
+#[contracttype]
 pub enum DataKey {
     Sample(u32),
     Earnings(Address),
     License(Address, u32),
     Producer(Address),
+    Collaborators(u32),
 }
 
 #[contract]
