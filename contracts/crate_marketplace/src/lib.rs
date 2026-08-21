@@ -87,6 +87,7 @@ impl CrateMarketplace {
         exclusive_price: i128,
         genre:           String,
         bpm:             u32,
+        collaborators:   Vec<Collaborator>,
     ) -> u32 {
         uploader.require_auth();
         assert!(title.len() > 0, "Title cannot be empty");
