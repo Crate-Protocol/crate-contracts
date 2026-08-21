@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short,
-    Address, Env, String, log, token,
+    Address, Env, String, Vec, log, token,
 };
 
 const PLATFORM_ADDRESS_KEY: &str = "plat_addr";
@@ -10,6 +10,9 @@ const PAYMENT_TOKEN_KEY:    &str = "pay_tok";
 const TOTAL_SAMPLES_KEY:    &str = "tot_samp";
 const TOTAL_VOLUME_KEY:     &str = "tot_vol";
 const TOTAL_PRODUCERS_KEY:  &str = "tot_prod";
+
+const MAX_COLLABORATORS: u32 = 3;
+const BPS_DENOMINATOR: u32 = 10_000;
 
 // ~1 year of ledgers at 5 s/ledger; entries are bumped to this TTL on every access.
 const PERSISTENT_BUMP_AMOUNT: u32 = 535_680;
@@ -43,11 +46,19 @@ pub enum LicenseTier {
 }
 
 #[contracttype]
+#[derive(Clone, Debug)]
+pub struct Collaborator {
+    pub address: Address,
+    pub share_bps: u32,
+}
+
+#[contracttype]
 pub enum DataKey {
     Sample(u32),
     Earnings(Address),
     License(Address, u32),
     Producer(Address),
+    Collaborators(u32),
 }
 
 #[contract]
@@ -79,6 +90,7 @@ impl CrateMarketplace {
         exclusive_price: i128,
         genre:           String,
         bpm:             u32,
+        collaborators:   Vec<Collaborator>,
     ) -> u32 {
         uploader.require_auth();
         assert!(title.len() > 0, "Title cannot be empty");
@@ -86,6 +98,17 @@ impl CrateMarketplace {
         assert!(bpm >= 40 && bpm <= 300, "BPM must be 40-300");
         assert!(lease_price > 0 && premium_price > 0 && exclusive_price > 0, "All prices must be positive");
         assert!(lease_price < premium_price && premium_price < exclusive_price, "Prices must be lease < premium < exclusive");
+        assert!(collaborators.len() <= MAX_COLLABORATORS, "Max 3 collaborators allowed");
+
+        let mut collab_total: u32 = 0;
+        for c in collaborators.iter() {
+            assert!(c.share_bps > 0, "Collaborator share must be positive");
+            assert!(c.share_bps < BPS_DENOMINATOR, "Collaborator share must be less than 100%");
+            assert!(c.address != uploader, "Collaborator cannot be the uploader");
+            collab_total = collab_total.checked_add(c.share_bps)
+                .expect("Collaborator shares overflow");
+        }
+        assert!(collab_total <= BPS_DENOMINATOR, "Collaborator shares must sum to <= 100%");
 
         let storage    = env.storage().instance();
         let sample_id: u32 = storage.get(&TOTAL_SAMPLES_KEY).unwrap_or(0) + 1;
@@ -100,6 +123,14 @@ impl CrateMarketplace {
         env.storage().persistent().extend_ttl(&sample_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
 
         storage.set(&TOTAL_SAMPLES_KEY, &sample_id);
+
+        // Store collaborators if any
+        if collaborators.len() > 0 {
+            let collab_key = DataKey::Collaborators(sample_id);
+            env.storage().persistent().set(&collab_key, &collaborators);
+            env.storage().persistent().extend_ttl(&collab_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
+        }
+
         let producer_key = DataKey::Producer(uploader.clone());
         if !env.storage().persistent().has(&producer_key) {
             env.storage().persistent().set(&producer_key, &true);
@@ -156,10 +187,8 @@ impl CrateMarketplace {
         token.transfer(&buyer, &env.current_contract_address(), &producer_cut);
         token.transfer(&buyer, &platform_addr,                  &platform_cut);
 
-        let earnings_key = DataKey::Earnings(sample.uploader.clone());
-        let current: i128 = env.storage().persistent().get(&earnings_key).unwrap_or(0);
-        env.storage().persistent().set(&earnings_key, &(current + producer_cut));
-        env.storage().persistent().extend_ttl(&earnings_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
+        // Split the producer cut among collaborators (and the uploader gets the remainder)
+        Self::split_producer_cut(&env, sample_id, &sample.uploader, producer_cut);
 
         env.storage().persistent().set(&license_key, &tier);
         env.storage().persistent().extend_ttl(&license_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
@@ -261,10 +290,8 @@ impl CrateMarketplace {
         token.transfer(&buyer, &env.current_contract_address(), &producer_cut);
         token.transfer(&buyer, &sample.owner, &owner_cut);
 
-        let earnings_key = DataKey::Earnings(sample.uploader.clone());
-        let current: i128 = env.storage().persistent().get(&earnings_key).unwrap_or(0);
-        env.storage().persistent().set(&earnings_key, &(current + producer_cut));
-        env.storage().persistent().extend_ttl(&earnings_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
+        // Split producer royalty among collaborators + uploader
+        Self::split_producer_cut(&env, sample_id, &sample.uploader, producer_cut);
 
         let old_license_key = DataKey::License(sample.owner.clone(), sample_id);
         env.storage().persistent().remove(&old_license_key);
@@ -315,6 +342,45 @@ impl CrateMarketplace {
         env.storage().instance()
             .get(&PAYMENT_TOKEN_KEY)
             .unwrap()
+    }
+
+    pub fn get_collaborators(env: Env, sample_id: u32) -> Vec<Collaborator> {
+        let key = DataKey::Collaborators(sample_id);
+        let collaborators: Vec<Collaborator> = env.storage().persistent()
+            .get(&key)
+            .unwrap_or(Vec::new(&env));
+        if collaborators.len() > 0 {
+            env.storage().persistent().extend_ttl(&key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
+        }
+        collaborators
+    }
+
+    /// Split `producer_cut` among collaborators and the uploader.
+    /// Each collaborator receives `producer_cut * share_bps / 10_000`.
+    /// The uploader receives the remainder (absorbs integer-division dust).
+    fn split_producer_cut(env: &Env, sample_id: u32, uploader: &Address, producer_cut: i128) {
+        let collab_key = DataKey::Collaborators(sample_id);
+        let collaborators: Vec<Collaborator> = env.storage().persistent()
+            .get(&collab_key)
+            .unwrap_or(Vec::new(env));
+
+        let mut distributed: i128 = 0;
+        for c in collaborators.iter() {
+            let share = producer_cut * (c.share_bps as i128) / BPS_DENOMINATOR as i128;
+            if share > 0 {
+                let earnings_key = DataKey::Earnings(c.address.clone());
+                let current: i128 = env.storage().persistent().get(&earnings_key).unwrap_or(0);
+                env.storage().persistent().set(&earnings_key, &(current + share));
+                env.storage().persistent().extend_ttl(&earnings_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
+                distributed += share;
+            }
+        }
+        // Remainder goes to the uploader
+        let uploader_share = producer_cut - distributed;
+        let earnings_key = DataKey::Earnings(uploader.clone());
+        let current: i128 = env.storage().persistent().get(&earnings_key).unwrap_or(0);
+        env.storage().persistent().set(&earnings_key, &(current + uploader_share));
+        env.storage().persistent().extend_ttl(&earnings_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
     }
 
     // Allows anyone (e.g. keepers, the frontend) to extend a sample's on-chain TTL
