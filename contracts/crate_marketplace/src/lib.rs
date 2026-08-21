@@ -308,9 +308,27 @@ impl CrateMarketplace {
         token.transfer(&buyer, &env.current_contract_address(), &producer_cut);
         token.transfer(&buyer, &sample.owner, &owner_cut);
 
+        // Split producer royalty among collaborators + uploader
+        let collab_key = DataKey::Collaborators(sample_id);
+        let collaborators: Vec<Collaborator> = env.storage().persistent()
+            .get(&collab_key)
+            .unwrap_or(Vec::new(&env));
+
+        let mut distributed: i128 = 0;
+        for c in collaborators.iter() {
+            let share = producer_cut * (c.share_bps as i128) / 10_000;
+            if share > 0 {
+                let earnings_key = DataKey::Earnings(c.address.clone());
+                let current: i128 = env.storage().persistent().get(&earnings_key).unwrap_or(0);
+                env.storage().persistent().set(&earnings_key, &(current + share));
+                env.storage().persistent().extend_ttl(&earnings_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
+                distributed += share;
+            }
+        }
+        let uploader_share = producer_cut - distributed;
         let earnings_key = DataKey::Earnings(sample.uploader.clone());
         let current: i128 = env.storage().persistent().get(&earnings_key).unwrap_or(0);
-        env.storage().persistent().set(&earnings_key, &(current + producer_cut));
+        env.storage().persistent().set(&earnings_key, &(current + uploader_share));
         env.storage().persistent().extend_ttl(&earnings_key, PERSISTENT_MIN_TTL, PERSISTENT_BUMP_AMOUNT);
 
         let old_license_key = DataKey::License(sample.owner.clone(), sample_id);
