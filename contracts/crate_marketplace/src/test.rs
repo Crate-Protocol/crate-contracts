@@ -704,8 +704,8 @@ mod tests {
         // Check splits
         // Price was 3B. Platform gets 10% (300M). Producer gets 10% (300M). Owner gets 80% (2.4B).
         let platform_balance = xlm_client.balance(&platform);
-        // Platform gets 200M from original 2B purchase, plus 300M from resale = 500M
-        assert_eq!(platform_balance, 500_000_000i128);
+        // Platform started with 10B (minted in create_xlm_token), gets 200M from original 2B purchase, plus 300M from resale = 10.5B
+        assert_eq!(platform_balance, 10_500_000_000i128);
 
         // Producer gets 1.8B from original purchase, plus 300M from resale = 2.1B pending
         let earnings = client.get_earnings(&producer);
@@ -723,7 +723,8 @@ mod tests {
         env.mock_all_auths();
 
         let platform = Address::generate(&env);
-        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform));
+        let token = dummy_token(&env);
+        let contract_id = env.register(CrateMarketplace, (&1000u32, &platform, &token));
         let client = CrateMarketplaceClient::new(&env, &contract_id);
 
         let producer_a = Address::generate(&env);
